@@ -1,0 +1,481 @@
+@import "tailwindcss";
+
+/* ============================================================
+   AgentWorks — Glassmorphism Design System
+   Based on UI/UX Pro Max Skill: Style #3 Glassmorphism
+   backdrop-filter: blur(15px), rgba(255,255,255,0.15-0.3),
+   border: 1px solid rgba(255,255,255,0.2), vibrant BG, Z-depth
+   Font: Space Grotesk (heading) + DM Sans (body)
+   Palette: Micro SaaS — Indigo #6366F1 + Emerald #10B981
+   ============================================================ */
+
+:root {
+  /* Vibrant Background — Glassmorphism requires vibrant BG */
+  --bg-canvas: #0B0D1A;
+  --bg-surface: rgba(15, 18, 35, 0.75);
+  --bg-elevated: rgba(255, 255, 255, 0.08);
+  --bg-hover: rgba(255, 255, 255, 0.12);
+  --bg-active: rgba(255, 255, 255, 0.18);
+
+  /* Glass layers — translucent white per spec */
+  --glass-light: rgba(255, 255, 255, 0.06);
+  --glass-medium: rgba(255, 255, 255, 0.12);
+  --glass-heavy: rgba(255, 255, 255, 0.18);
+  --glass-border: rgba(255, 255, 255, 0.15);
+
+  /* Text Hierarchy */
+  --text-primary: #F0F2F5;
+  --text-secondary: #8B92A5;
+  --text-muted: #5A6178;
+  --text-faint: #3D4459;
+
+  /* Accent — Indigo (Micro SaaS palette) */
+  --accent: #6366F1;
+  --accent-hover: #818CF8;
+  --accent-muted: rgba(99, 102, 241, 0.15);
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --accent-bloom: rgba(99, 102, 241, 0.08);
+
+  /* CTA — Emerald (Micro SaaS palette) */
+  --cta: #10B981;
+  --cta-hover: #34D399;
+  --cta-muted: rgba(16, 185, 129, 0.15);
+  --cta-glow: rgba(16, 185, 129, 0.25);
+
+  /* Vibrant Glassmorphism Colors */
+  --electric-blue: #0080FF;
+  --neon-purple: #8B00FF;
+  --vivid-pink: #FF1493;
+  --teal: #20B2AA;
+
+  /* Semantic Colors */
+  --purple: #A855F7;
+  --purple-muted: rgba(168, 85, 247, 0.15);
+  --success: #10B981;
+  --success-muted: rgba(16, 185, 129, 0.15);
+  --warning: #F59E0B;
+  --warning-muted: rgba(245, 158, 11, 0.15);
+  --danger: #EF4444;
+  --danger-muted: rgba(239, 68, 68, 0.15);
+  --info: #3B82F6;
+  --info-muted: rgba(59, 130, 246, 0.15);
+
+  /* Borders — per Glassmorphism spec */
+  --border: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.2);
+  --border-active: rgba(255, 255, 255, 0.3);
+
+  /* Shadows — Z-depth layering */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px var(--accent-glow), 0 0 60px var(--accent-bloom);
+  --shadow-cta-glow: 0 0 20px var(--cta-glow);
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Blur — per Glassmorphism spec 10-20px */
+  --blur-sm: 10px;
+  --blur-md: 15px;
+  --blur-lg: 20px;
+  --blur-xl: 30px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+}
+
+/* ============================================================
+   Base Reset
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ============================================================
+   Vibrant Background — Glassmorphism requires colorful BG
+   ============================================================ */
+
+.vibrant-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.vibrant-bg::before {
+  content: "";
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  top: -10%;
+  left: 20%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: float-1 20s ease-in-out infinite;
+}
+
+.vibrant-bg::after {
+  content: "";
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  bottom: -5%;
+  right: 15%;
+  background: radial-gradient(circle, rgba(139, 0, 255, 0.12) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: float-2 25s ease-in-out infinite;
+}
+
+@keyframes float-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+@keyframes float-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-30px, 20px) scale(1.08); }
+  66% { transform: translate(25px, -15px) scale(0.92); }
+}
+
+/* Third blob for Teal */
+.vibrant-blob-teal {
+  position: fixed;
+  width: 400px;
+  height: 400px;
+  top: 50%;
+  left: -5%;
+  background: radial-gradient(circle, rgba(32, 178, 170, 0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  animation: float-3 22s ease-in-out infinite;
+}
+
+@keyframes float-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -40px) scale(1.1); }
+}
+
+/* ============================================================
+   Glassmorphism Layers — per spec
+   ============================================================ */
+
+/* Light glass — sidebar, cards */
+.glass {
+  background: var(--glass-light);
+  backdrop-filter: blur(var(--blur-md)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(1.2);
+  border: 1px solid var(--glass-border);
+}
+
+/* Medium glass — panels, dropdowns */
+.glass-medium {
+  background: var(--glass-medium);
+  backdrop-filter: blur(var(--blur-lg)) saturate(1.3);
+  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(1.3);
+  border: 1px solid var(--border-hover);
+}
+
+/* Heavy glass — modals, overlays */
+.glass-heavy {
+  background: var(--glass-heavy);
+  backdrop-filter: blur(var(--blur-xl)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(1.4);
+  border: 1px solid var(--border-active);
+}
+
+/* Glass surface — main panels */
+.glass-surface {
+  background: var(--bg-surface);
+  backdrop-filter: blur(var(--blur-md)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(1.2);
+  border: 1px solid var(--border);
+}
+
+/* ============================================================
+   Light Reflection — Glassmorphism spec: light source
+   ============================================================ */
+
+.glass-reflect {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-reflect::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+.border-micro { border: 1px solid var(--border); }
+.border-micro-hover:hover { border-color: var(--border-hover); }
+
+.glow-accent { box-shadow: var(--shadow-glow); }
+.glow-cta { box-shadow: var(--shadow-cta-glow); }
+
+/* ============================================================
+   Shimmer — light sweep on glass
+   ============================================================ */
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%) skewX(-12deg); }
+  100% { transform: translateX(200%) skewX(-12deg); }
+}
+
+.shimmer { position: relative; overflow: hidden; }
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.05) 55%, transparent 65%);
+  animation: shimmer 5s var(--ease-out) infinite;
+}
+
+/* ============================================================
+   Breathing Animation
+   ============================================================ */
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes breathe-soft {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.breathe { animation: breathe 2.5s ease-in-out infinite; }
+.breathe-soft { animation: breathe-soft 3s ease-in-out infinite; }
+
+/* ============================================================
+   Fade & Slide Animations
+   ============================================================ */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in { animation: fade-in var(--duration-normal) var(--ease-out) both; }
+.animate-fade-in-scale { animation: fade-in-scale var(--duration-slow) var(--ease-out) both; }
+.animate-slide-up { animation: slide-up var(--duration-normal) var(--ease-out) both; }
+
+.stagger > * { animation: fade-in var(--duration-normal) var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(n+6) { animation-delay: 300ms; }
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* ============================================================
+   Status Indicators
+   ============================================================ */
+
+.status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.status-idle { background: var(--text-muted); }
+.status-executing { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); animation: breathe 2s ease-in-out infinite; }
+.status-summarizing { background: var(--warning); box-shadow: 0 0 8px var(--warning-muted); animation: breathe 2s ease-in-out infinite; }
+.status-reporting { background: var(--purple); box-shadow: 0 0 8px var(--purple-muted); animation: breathe 2s ease-in-out infinite; }
+.status-archived { background: var(--success); }
+.status-error { background: var(--danger); box-shadow: 0 0 8px var(--danger-muted); }
+
+/* ============================================================
+   Interactive Elements
+   ============================================================ */
+
+/* Ghost button */
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 500; font-family: "DM Sans", sans-serif;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid transparent;
+  transition: all var(--duration-fast) var(--ease-out); cursor: pointer;
+}
+.btn-ghost:hover { color: var(--text-primary); background: var(--bg-hover); border-color: var(--border); }
+.btn-ghost:active { background: var(--bg-active); transform: scale(0.97); }
+
+/* Accent button — Indigo */
+.btn-accent {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 600; font-family: "DM Sans", sans-serif;
+  color: white; background: var(--accent); border: none;
+  box-shadow: var(--shadow-glow);
+  transition: all var(--duration-fast) var(--ease-out); cursor: pointer;
+}
+.btn-accent:hover { background: var(--accent-hover); box-shadow: 0 0 24px var(--accent-glow), 0 0 80px var(--accent-bloom); transform: translateY(-1px); }
+.btn-accent:active { transform: translateY(0) scale(0.97); }
+.btn-accent:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* CTA button — Emerald */
+.btn-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 600; font-family: "DM Sans", sans-serif;
+  color: white; background: var(--cta); border: none;
+  box-shadow: var(--shadow-cta-glow);
+  transition: all var(--duration-fast) var(--ease-out); cursor: pointer;
+}
+.btn-cta:hover { background: var(--cta-hover); box-shadow: 0 0 24px var(--cta-glow); transform: translateY(-1px); }
+.btn-cta:active { transform: translateY(0) scale(0.97); }
+
+/* Decision option button */
+.btn-decision {
+  display: inline-flex; align-items: center;
+  padding: 7px 14px; border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 500; font-family: "DM Sans", sans-serif;
+  color: var(--text-primary); background: var(--bg-hover);
+  border: 1px solid var(--border);
+  transition: all var(--duration-fast) var(--ease-out); cursor: pointer;
+}
+.btn-decision:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-muted); box-shadow: 0 0 8px var(--accent-bloom); }
+.btn-decision.selected { background: var(--accent); border-color: var(--accent); color: white; box-shadow: var(--shadow-glow); }
+.btn-decision:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ============================================================
+   Glass Cards
+   ============================================================ */
+
+.card {
+  background: var(--glass-light);
+  backdrop-filter: blur(var(--blur-sm)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(1.1);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.card:hover { border-color: var(--border-hover); background: var(--glass-medium); }
+
+.card-glow {
+  background: var(--glass-light);
+  backdrop-filter: blur(var(--blur-sm)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(1.1);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.card-glow:hover { border-color: var(--border-hover); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 16px var(--accent-bloom); }
+
+/* ============================================================
+   Input — Glass style
+   ============================================================ */
+
+.input-base {
+  width: 100%;
+  background: var(--glass-light);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 13px; font-family: "DM Sans", sans-serif;
+  color: var(--text-primary); outline: none;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.input-base::placeholder { color: var(--text-muted); }
+.input-base:hover { border-color: var(--border-hover); }
+.input-base:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted), 0 0 12px var(--accent-bloom); }
+
+/* ============================================================
+   Modal — Glassmorphism overlay
+   ============================================================ */
+
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fade-in var(--duration-fast) var(--ease-out) both;
+}
+
+.modal-panel {
+  background: var(--glass-heavy);
+  backdrop-filter: blur(var(--blur-xl)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(1.4);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: fade-in-scale var(--duration-slow) var(--ease-out) both;
+  overflow: hidden;
+}
+
+/* ============================================================
+   Progress Bar
+   ============================================================ */
+
+.progress-track { height: 3px; background: var(--bg-hover); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 500ms var(--ease-out); }
+.progress-accent { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+.progress-cta { background: var(--cta); box-shadow: 0 0 6px var(--cta-glow); }
+.progress-warning { background: var(--warning); }
+.progress-danger { background: var(--danger); box-shadow: 0 0 6px var(--danger-muted); }
+
+/* ============================================================
+   Selection & Focus
+   ============================================================ */
+
+::selection { background: var(--accent-muted); color: var(--text-primary); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ============================================================
+   Heading Font Override — Space Grotesk
+   ============================================================ */
+
+h1, h2, h3, .font-heading { font-family: "Space Grotesk", "DM Sans", sans-serif; }
