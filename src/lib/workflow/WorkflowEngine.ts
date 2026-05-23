@@ -144,9 +144,11 @@ export class WorkflowEngine {
       } : undefined,
     });
 
-    // 创建子任务
+    // 创建子任务（TDN-06: 继承父任务优先级）
+    const task = store.tasks[taskId];
+    const taskPriority = task?.priority || "medium";
     for (const sub of decomposition.subTasks) {
-      store.addSubTask(taskId, sub.assigneeId, sub.title, sub.description);
+      store.addSubTask(taskId, sub.assigneeId, sub.title, sub.description, taskPriority);
     }
 
     // 处理无法匹配下属的子任务 - 上报给上级

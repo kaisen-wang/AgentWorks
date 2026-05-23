@@ -6,7 +6,10 @@ import type { AppState } from "@/stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { IconGroupChat, IconUser, renderAvatarIcon } from "@/components/common/Icons";
+import { useWebSocket } from "@/lib/ws/useWebSocket";
 import type { ChatId, MessageId } from "@/types";
+
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "";
 
 export function ChatWindow({ chatId }: { chatId: ChatId }) {
   const chat = useAppStore((s: AppState) => s.chats[chatId]);
@@ -14,6 +17,7 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
   const agents = useAppStore((s: AppState) => s.agents);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [replyingTo, setReplyingTo] = useState<MessageId | null>(null);
+  const { isConnected } = useWebSocket();
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
 
@@ -80,6 +84,12 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
               </span>
             ))}
           </div>
+        )}
+        {/* WebSocket 连接状态 */}
+        {WS_URL && !isConnected && (
+          <span className="text-[9px] text-[var(--warning)] bg-[var(--warning-muted)] px-1.5 py-[2px] rounded-md">
+            重连中
+          </span>
         )}
       </div>
 

@@ -1,4 +1,7 @@
 node_modules/
 .claude/
+.codeartsdoer/
 .next/
 .vscode/
+
+.env.local

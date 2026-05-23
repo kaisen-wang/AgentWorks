@@ -126,6 +126,21 @@ function ReportCardView({ card, chatId, messageId, onResolve }: { card: ReportCa
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--warning)" strokeWidth="1.3"><path d="M5 2V5.5"/><circle cx="5" cy="7.5" r="0.5" fill="var(--warning)"/><path d="M5 1L9 8.5H1L5 1Z"/></svg>
         </div>
         <span className="text-[12px] font-semibold font-heading text-[var(--warning)]">{card.title}</span>
+        {/* UI-07: 跨部门请求图标和标签 */}
+        {card.isCrossDepartment && (
+          <span className="flex items-center gap-1 text-[9px] font-medium text-[var(--accent)] bg-[var(--accent-muted)] px-1.5 py-[2px] rounded-md">
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="var(--accent)" strokeWidth="1.2">
+              <circle cx="2.5" cy="4" r="1.5"/><circle cx="5.5" cy="4" r="1.5"/><path d="M4 4H4.5"/>
+            </svg>
+            跨部门
+          </span>
+        )}
+        {/* BUP-06: 紧急上报标签 */}
+        {card.isUrgent && (
+          <span className="text-[9px] font-medium text-[var(--danger)] bg-[var(--danger-muted)] px-1.5 py-[2px] rounded-md animate-pulse">
+            紧急
+          </span>
+        )}
         {card.resolved && <span className="text-[9px] font-medium text-[var(--cta)] bg-[var(--cta-muted)] px-1.5 py-[2px] rounded-md">已决策</span>}
       </div>
       <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">{card.problem}</p>

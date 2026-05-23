@@ -14,6 +14,7 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "better-sqlite3": "^12.10.0",
     "next": "^16.2.6",
     "postcss": "^8.5.15",
     "react": "^19.2.6",

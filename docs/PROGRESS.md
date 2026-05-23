@@ -15,7 +15,7 @@
 | 技术栈 | Next.js 16 + React 19 + TypeScript + Zustand 5 + Tailwind CSS 4 |
 | 测试框架 | Vitest 4 (jsdom) + @testing-library/react 16 |
 | 测试运行 | `npm test` (单次) / `npm run test:watch` (监听) |
-| 当前测试 | 12 个文件, 285 个用例, 全部通过 |
+| 当前测试 | 15 个文件, 321 个用例, 全部通过 |
 
 ---
 
@@ -69,10 +69,25 @@
 | SOLO-03 | 成本控制+预算 | P1 | FULL | TESTED | updateAgentBudget + budget alert |
 | SOLO-04 | 快速模板克隆 | P1 | FULL | TESTED | cloneWorkspace |
 | SOLO-05 | 临时外部协作者 | P1 | FULL | TESTED | inviteCollaborator + removeCollaborator |
+| ORG-07 | 管理幅度临时豁免 | P1 | FULL | TESTED | grantSpanExemption + revokeSpanExemption |
+| ORG-08 | 项目目录 | P0 | FULL | TESTED | createProject/switchProject/getTasksByProject |
+| ORG-09 | 独立任务队列 | P1 | FULL | TESTED | AgentTaskQueue 三级优先级 + 抢占 |
+| ACT-05 | 能力标签 | P1 | FULL | TESTED | CapabilityMatcher + 预置标签库 |
+| TDN-06 | 优先级继承 | P1 | FULL | TESTED | addSubTask 继承父任务 priority |
+| BUP-06 | 紧急上报通道 | P1 | FULL | TESTED | isUrgent 标记 + 直接推送老板 |
+| BUP-07 | 跨部门直接请求 | P1 | FULL | TESTED | crossDepartmentRequest + 审计日志 |
+| UI-07 | 跨部门请求图标 | P1 | FULL | TESTED | ReportCardView isCrossDepartment 图标+标签 |
+| KNL-06 | 任务关联项目 | P0 | FULL | TESTED | createTask 自动关联 currentProjectId |
+| KNL-07 | 知识库全局共享 | P1 | FULL | TESTED | 知识库全局共享，归档按项目过滤 |
+| RFT-05 | 循环上报检测 | P1 | FULL | TESTED | detectCycle 方法 |
+| RFT-06 | 外部API幂等性 | P1 | FULL | TESTED | IdempotencyManager + 重试策略 + 幂等键 |
+| SOLO-06 | 项目化工作流 | P0 | FULL | TESTED | 项目切换 + 任务归属 + 成本按项目聚合 |
+| SOLO-07 | 按Agent查看队列 | P1 | FULL | TESTED | /queue 命令 + AgentTaskQueue |
+| EXT-05 | LLM自主规划 | P0 | FULL | TESTED | LLMService + decomposeWithLLM |
 
-**统计**: FULL=41, PARTIAL=0, NONE=0 | TESTED=41, PARTIAL_TEST=0, UNTESTED=0
+**统计**: FULL=44, PARTIAL=0, NONE=0 | TESTED=44, PARTIAL_TEST=0, UNTESTED=0
 
-**所有 41 项需求已全部实现 (FULL) 且全部测试通过 (TESTED)!**
+**所有 44 项需求已全部实现 (FULL) 且全部测试通过 (TESTED)!**
 
 ---
 
@@ -94,11 +109,37 @@
 | `src/components/common/CostPanel.test.tsx` | 4 | UI渲染: 标题/统计标签/Agent费用明细 |
 | `src/components/common/KnowledgePanel.test.tsx` | 5 | UI渲染: 标题/scope切换/空状态/条目显示 |
 | `src/components/common/ToolAuthPanel.test.tsx` | 4 | UI渲染: 标题/Agent选择/空状态 |
-| **合计** | **285** | |
+| `src/lib/scheduler/AgentTaskQueue.test.ts` | 13 | Agent 独立任务队列: 优先级排序/抢占/挂起/恢复 |
+| `src/lib/commands/SlashCommandRouter.test.ts` | 11 | 斜杠命令路由: 7个命令+边界 |
+| `src/lib/reliability/IdempotencyManager.test.ts` | 12 | RFT-06: 幂等键生成/缓存/重试策略/确认/过期清理 |
+| **合计** | **321** | |
 
 ---
 
 ## 四、变更日志
+
+### 2026-05-23 (7): 基础设施集成 + 未追踪需求补全
+
+**基础设施集成:**
+- `appStore.ts`: 添加 Zustand `persist` middleware，localStorage 持久化（partialize 仅存数据字段，容量不足降级处理）
+- `src/app/api/`: 实现 4 个 API Routes（agents/chat/messages/tasks）+ sync 同步接口
+- `src/lib/ws/useWebSocket.ts` (NEW): WebSocket 集成 Hook，连接 ChatWebSocket 到 React 组件
+- `ChatWindow.tsx`: 集成 useWebSocket，添加连接状态指示器
+- `.env.example` + `.env.local` (NEW): 环境变量配置（LLM API、WebSocket URL、数据库路径）
+- `better-sqlite3`: 安装运行时依赖，SQLite 持久化层可用
+- `src/app/api/sync/route.ts` (NEW): 数据同步 API，前端 store ↔ SQLite
+
+**未追踪需求补全:**
+- TDN-06: `SubTask` 添加 `priority` 字段，`addSubTask` 继承父任务优先级，`decomposeAndAssign` 传递优先级
+- UI-07: `ReportCardView` 添加跨部门请求图标+标签，紧急上报标签
+- RFT-06: `IdempotencyManager` (NEW) — 幂等键生成/缓存/重试策略/用户确认/过期清理
+
+**新增测试:**
+- `src/lib/reliability/IdempotencyManager.test.ts` (NEW) 12 tests
+
+**测试统计:** 285 -> 321 (新增 36 个用例), 通过率 100%
+
+**里程碑: 44 项需求 FULL+TESTED, 基础设施集成完成!**
 
 ### 2026-05-23 (6): TypeScript 构建修复 + UI 测试补全
 

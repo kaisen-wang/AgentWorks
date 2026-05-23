@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import type {
   Agent, AgentId, AgentConfig, AgentCapability, AgentRole, ActionStatus,
@@ -78,7 +79,7 @@ export interface AppState {
   // --- 任务 ---
   tasks: Record<TaskId, Task>;
   createTask: (title: string, description: string, assigneeId: AgentId, chatId: ChatId, priority?: TaskPriority, deadline?: number) => Task;
-  addSubTask: (taskId: TaskId, assigneeId: AgentId, title: string, description: string, deadline?: number) => SubTask;
+  addSubTask: (taskId: TaskId, assigneeId: AgentId, title: string, description: string, priority?: TaskPriority, deadline?: number) => SubTask;
   updateSubTaskStatus: (taskId: TaskId, subTaskId: TaskId, status: TaskStatus, result?: string) => void;
   updateTaskStatus: (taskId: TaskId, status: TaskStatus) => void;
 
@@ -140,7 +141,9 @@ export interface AppState {
   transferTasks: (fromAgentId: AgentId, toAgentId: AgentId) => number;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
   // ============================================================
   // 组织架构
   // ============================================================
@@ -557,8 +560,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     return task;
   },
 
-  addSubTask: (taskId, assigneeId, title, description, deadline) => {
+  addSubTask: (taskId, assigneeId, title, description, priority, deadline) => {
     const id = uuidv4();
+    const state = get();
+    // TDN-06: 子任务继承父任务优先级
+    const parentTask = state.tasks[taskId];
+    const inheritedPriority = priority || parentTask?.priority || "medium";
     const subTask: SubTask = {
       id,
       parentTaskId: taskId,
@@ -566,6 +573,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       title,
       description,
       status: "pending",
+      priority: inheritedPriority,
       deadline,
       createdAt: Date.now(),
     };
@@ -1073,4 +1081,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
   },
-}));
+}),
+    {
+      name: "agentworks-store",
+      partialize: (state: AppState) => ({
+        agents: state.agents,
+        projects: state.projects,
+        currentProjectId: state.currentProjectId,
+        chats: state.chats,
+        activeChatId: state.activeChatId,
+        messages: state.messages,
+        tasks: state.tasks,
+        archives: state.archives,
+        scripts: state.scripts,
+        knowledge: state.knowledge,
+        externalCollaborators: state.externalCollaborators,
+        auditLogs: state.auditLogs,
+        restMode: state.restMode,
+        installedPlugins: state.installedPlugins,
+        webhooks: state.webhooks,
+        abExperiments: state.abExperiments,
+      }),
+      storage: {
+        getItem: (name: string) => {
+          try {
+            const str = localStorage.getItem(name);
+            return str ? JSON.parse(str) : null;
+          } catch {
+            return null;
+          }
+        },
+        setItem: (name: string, value: unknown) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value));
+          } catch {
+            console.warn("[AgentWorks] localStorage 容量不足，清除旧数据");
+            try {
+              localStorage.removeItem(name);
+              localStorage.setItem(name, JSON.stringify(value));
+            } catch {
+              console.error("[AgentWorks] localStorage 持久化失败");
+            }
+          }
+        },
+        removeItem: (name: string) => localStorage.removeItem(name),
+      },
+    }
+  )
+);

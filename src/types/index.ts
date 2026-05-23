@@ -82,6 +82,7 @@ export interface SubTask {
   title: string;
   description: string;
   status: TaskStatus;
+  priority: TaskPriority;  // TDN-06: 继承父任务优先级
   result?: string;         // 执行结果
   deadline?: number;       // 截止时间戳
   createdAt: number;
