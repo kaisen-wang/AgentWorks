@@ -162,6 +162,35 @@ export function IconHelp({ size = 14, className, color = "var(--text-secondary)"
   );
 }
 
+/** 文件夹/项目 (原 📁) */
+export function IconFolder({ size = 14, className, color = "var(--accent)" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" className={className}>
+      <path d="M1.5 3.5V11.5C1.5 12.05 1.95 12.5 2.5 12.5H11.5C12.05 12.5 12.5 12.05 12.5 11.5V5C12.5 4.45 12.05 4 11.5 4H7L5.5 2.5H2.5C1.95 2.5 1.5 2.95 1.5 3.5Z" stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 盾牌/豁免 (原 🛡) */
+export function IconShield({ size = 14, className, color = "var(--accent)" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" className={className}>
+      <path d="M7 1.5L12 3.5V7C12 10 9.5 12 7 12.5C4.5 12 2 10 2 7V3.5L7 1.5Z" stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 警告/紧急 (原 ⚠) */
+export function IconAlert({ size = 14, className, color = "var(--danger)" }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" className={className}>
+      <path d="M7 1.5L12.5 11.5H1.5L7 1.5Z" stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M7 6V8" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="7" cy="10" r="0.5" fill={color} />
+    </svg>
+  );
+}
+
 // ============================================================
 // 知识库范围图标
 // ============================================================

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { renderAvatarIcon } from "@/components/common/Icons";
@@ -7,8 +8,19 @@ import { renderAvatarIcon } from "@/components/common/Icons";
 export function CostPanel({ onClose }: { onClose: () => void }) {
   const agents = useAppStore((s: AppState) => s.agents);
   const archives = useAppStore((s: AppState) => s.archives);
+  const projects = useAppStore((s: AppState) => s.projects);
+  const currentProjectId = useAppStore((s: AppState) => s.currentProjectId);
+
+  // SOLO-06: 按项目聚合成本
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(currentProjectId);
+
+  // 按项目过滤归档
+  const filteredArchives = selectedProjectId
+    ? archives.filter((a) => a.projectId === selectedProjectId)
+    : archives;
+
   const agentCosts = Object.values(agents).map((agent) => {
-    const aa = archives.filter((a) => a.agentId === agent.id);
+    const aa = filteredArchives.filter((a) => a.agentId === agent.id);
     return { id: agent.id, name: agent.name, avatar: agent.avatar, budgetUsed: agent.config.budgetUsed, budgetTotal: agent.config.monthlyBudget, archiveCost: aa.reduce((s, a) => s + a.cost, 0), apiCalls: aa.reduce((s, a) => s + a.apiCalls, 0), usagePercent: agent.config.monthlyBudget > 0 ? (agent.config.budgetUsed / agent.config.monthlyBudget) * 100 : 0 };
   });
   const totalCost = agentCosts.reduce((s, a) => s + a.archiveCost, 0);
@@ -26,10 +38,20 @@ export function CostPanel({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="btn-ghost !px-2 !py-1"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 2L10 10M10 2L2 10"/></svg></button>
         </div>
         <div className="p-5 space-y-5">
+          {/* SOLO-06: 项目筛选 */}
+          {projects.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-[var(--text-muted)]">项目:</span>
+              <button onClick={() => setSelectedProjectId(null)} className={`text-[10px] px-2 py-1 rounded-md transition-colors ${!selectedProjectId ? "bg-[var(--accent-muted)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"}`}>全部</button>
+              {projects.map((p) => (
+                <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className={`text-[10px] px-2 py-1 rounded-md transition-colors ${selectedProjectId === p.id ? "bg-[var(--accent-muted)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"}`}>{p.name}</button>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2.5">
             {[
-              { value: `$${totalCost.toFixed(2)}`, label: "总费用" },
-              { value: `$${totalBudget.toFixed(2)}`, label: "总预算" },
+              { value: `${totalCost.toFixed(2)}`, label: "总费用" },
+              { value: `${totalBudget.toFixed(2)}`, label: "总预算" },
               { value: `${totalApiCalls}`, label: "API 调用" },
             ].map((item) => (
               <div key={item.label} className="card-glow glass-reflect rounded-xl p-3.5 text-center">

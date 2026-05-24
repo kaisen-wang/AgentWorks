@@ -107,7 +107,24 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
             </div>
           </div>
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} message={msg} onReply={(id) => setReplyingTo(id)} />)
+          // UI-04: 按线程聚合显示消息
+          messages.map((msg) => {
+            // 查找回复此消息的线程消息
+            const threadMessages = messages.filter((m) => m.replyToId === msg.id);
+            return (
+              <div key={msg.id}>
+                <MessageBubble message={msg} onReply={(id) => setReplyingTo(id)} />
+                {/* 线程回复缩进显示 */}
+                {threadMessages.length > 0 && (
+                  <div className="ml-8 border-l-2 border-[var(--accent-muted)] pl-3 space-y-0.5">
+                    {threadMessages.map((threadMsg) => (
+                      <MessageBubble key={threadMsg.id} message={threadMsg} onReply={(id) => setReplyingTo(id)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>

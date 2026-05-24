@@ -20,11 +20,18 @@ interface ScriptPanelProps {
 export function ScriptPanel({ onClose }: ScriptPanelProps) {
   const scripts = useAppStore((s: AppState) => s.scripts);
   const activeChatId = useAppStore((s: AppState) => s.activeChatId);
+  const projects = useAppStore((s: AppState) => s.projects);
+  const currentProjectId = useAppStore((s: AppState) => s.currentProjectId);
   const [runningId, setRunningId] = useState<ScriptId | null>(null);
   const [replacements, setReplacements] = useState("");
   const [message, setMessage] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(currentProjectId);
 
-  const scriptList = Object.values(scripts);
+  // SOLO-06: 按项目过滤剧本
+  const scriptList = Object.values(scripts).filter((s) => {
+    if (!selectedProjectId) return true;
+    return s.projectId === selectedProjectId;
+  });
 
   const handleRun = async (scriptId: ScriptId) => {
     if (!activeChatId) {
@@ -57,6 +64,17 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
             </svg>
           </button>
         </div>
+
+        {/* SOLO-06: 项目筛选 */}
+        {projects.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-[var(--text-muted)]">项目:</span>
+            <button onClick={() => setSelectedProjectId(null)} className={`text-[10px] px-2 py-1 rounded-md transition-colors ${!selectedProjectId ? "bg-[var(--accent-muted)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"}`}>全部</button>
+            {projects.map((p) => (
+              <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className={`text-[10px] px-2 py-1 rounded-md transition-colors ${selectedProjectId === p.id ? "bg-[var(--accent-muted)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"}`}>{p.name}</button>
+            ))}
+          </div>
+        )}
 
         {message && (
           <div className="text-[12px] px-3 py-2 rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]">

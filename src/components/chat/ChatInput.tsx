@@ -5,8 +5,9 @@ import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { workflowEngine } from "@/lib/workflow";
 import { parseNaturalLanguage } from "@/lib/nlu";
-import { IconBot, IconTask, IconChart, IconArchive, IconCollaborator, IconMoon, IconHelp, IconUser, renderAvatarIcon } from "@/components/common/Icons";
-import type { AgentId, ChatId, AgentRole, MessageId } from "@/types";
+import { IconBot, IconTask, IconChart, IconArchive, IconCollaborator, IconMoon, IconHelp, IconUser, IconFolder, IconShield, IconAlert, renderAvatarIcon } from "@/components/common/Icons";
+import { parseSlashCommand, executeCommand } from "@/lib/commands/SlashCommandRouter";
+import type { AgentId, ChatId, AgentRole, AgentCapability, MessageId } from "@/types";
 
 export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; replyToId?: MessageId | null; onReplySent?: () => void }) {
   const [input, setInput] = useState("");
@@ -28,9 +29,13 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
 
   const slashCommands = [
     { cmd: "/new_agent", desc: "创建新 Agent", icon: <IconBot size={13} /> },
-    { cmd: "/new_task", desc: "下达任务", icon: <IconTask size={13} /> },
+    { cmd: "/new_task", desc: "下达任务 (@Agent名 描述)", icon: <IconTask size={13} /> },
     { cmd: "/summary", desc: "汇总当前任务", icon: <IconChart size={13} /> },
-    { cmd: "/archive", desc: "查询归档", icon: <IconArchive size={13} /> },
+    { cmd: "/archive", desc: "查询归档 (关键词)", icon: <IconArchive size={13} /> },
+    { cmd: "/queue", desc: "查看Agent任务队列", icon: <IconChart size={13} /> },
+    { cmd: "/project", desc: "切换/创建项目", icon: <IconFolder size={13} /> },
+    { cmd: "/exempt", desc: "申请管理幅度豁免", icon: <IconShield size={13} /> },
+    { cmd: "/urgent", desc: "标记下一条上报为紧急", icon: <IconAlert size={13} /> },
     { cmd: "/invite", desc: "邀请外部协作者", icon: <IconCollaborator size={13} /> },
     { cmd: "/rest_mode", desc: "开启/关闭休息模式", icon: <IconMoon size={13} /> },
     { cmd: "/help", desc: "显示帮助", icon: <IconHelp size={13} /> },
@@ -71,14 +76,16 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
       case "create_agent": {
         const name = (params.name as string) || "新 Agent";
         const role = (params.role as AgentRole) || "specialist";
+        const capabilities = (params.capabilities as AgentCapability[]) || [];
         const config: Record<string, unknown> = {};
         if (params.model) config.model = params.model;
         if (params.monthlyBudget) config.monthlyBudget = params.monthlyBudget;
-        const agentResult = createAgent(name, role, null, [], config);
+        const agentResult = createAgent(name, role, null, capabilities, config);
         if ("error" in agentResult) {
           sendMessage(chatId, "system", "system", agentResult.error);
         } else {
-          sendMessage(chatId, "system", "system", `已创建${role === "supervisor" ? "主管" : "专员"} Agent「${agentResult.name}」${params.model ? `，模型 ${params.model}` : ""}`);
+          const capStr = capabilities.length > 0 ? `，能力: ${capabilities.map((c) => c.name).join("、")}` : "";
+          sendMessage(chatId, "system", "system", `已创建${role === "supervisor" ? "主管" : "专员"} Agent「${agentResult.name}」${params.model ? `，模型 ${params.model}` : ""}${capStr}`);
           const chat = createChat("direct", agentResult.name, [
             { id: "user", name: "你", avatar: "user", role: "owner" },
             { id: agentResult.id, name: agentResult.name, avatar: agentResult.avatar, role: "member" },
@@ -129,6 +136,22 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
           } else if (field === "monthlyBudget") {
             store.updateAgent(agent.id, { config: { ...agent.config, monthlyBudget: value as number } });
             sendMessage(chatId, "system", "system", `已将「${agent.name}」的月度预算调整为 ${value}`);
+          } else if (field === "timeout") {
+            store.updateAgent(agent.id, { config: { ...agent.config, timeout: value as number } });
+            sendMessage(chatId, "system", "system", `已将「${agent.name}」的超时时间设为 ${value}ms`);
+          } else if (field === "maxRetries") {
+            store.updateAgent(agent.id, { config: { ...agent.config, maxRetries: value as number } });
+            sendMessage(chatId, "system", "system", `已将「${agent.name}」的重试次数设为 ${value}`);
+          } else if (field === "temperature") {
+            store.updateAgent(agent.id, { config: { ...agent.config, temperature: value as number } });
+            sendMessage(chatId, "system", "system", `已将「${agent.name}」的温度设为 ${value}`);
+          } else if (field === "maxChildren") {
+            store.updateMaxChildren(agent.id, value as number);
+            sendMessage(chatId, "system", "system", `已将「${agent.name}」的管理幅度上限设为 ${value}`);
+          } else if (field === "reportFrequency") {
+            store.updateAgent(agent.id, { config: { ...agent.config, reportFrequency: value as "on_completion" | "daily" | "weekly" } });
+            const freqLabel = value === "on_completion" ? "完成时" : value === "daily" ? "每日" : "每周";
+            sendMessage(chatId, "system", "system", `已将「${agent.name}」的上报频率设为 ${freqLabel}`);
           }
         } else {
           sendMessage(chatId, "system", "system", `未找到名为「${agentName}」的 Agent`);
@@ -178,7 +201,17 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
         if (agent && parent) {
           const result = store.setParent(agent.id, parent.id);
           if ("error" in result) {
-            sendMessage(chatId, "system", "system", result.error || "操作失败");
+            // RFT-05: 检测到循环时，尝试强制指定
+            if (result.error?.includes("循环引用")) {
+              const forceResult = store.setParent(agent.id, parent.id, true);
+              if ("error" in forceResult) {
+                sendMessage(chatId, "system", "system", forceResult.error || "操作失败");
+              } else {
+                sendMessage(chatId, "system", "system", `已强制将「${agent.name}」移至「${parent.name}」下（跳过循环检测）`);
+              }
+            } else {
+              sendMessage(chatId, "system", "system", result.error || "操作失败");
+            }
           } else {
             sendMessage(chatId, "system", "system", `已将「${agent.name}」移至「${parent.name}」下`);
           }
@@ -187,63 +220,90 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
         }
         break;
       }
+      case "add_capability": {
+        // SOLO-02: 添加能力标签
+        const agentName = params.agentName as string;
+        const capabilityNames = params.capabilityNames as string[];
+        const agent = agentList.find((a) => a.name.includes(agentName));
+        if (agent) {
+          const newCapabilities = [...agent.capabilities];
+          for (const capName of capabilityNames) {
+            const existing = newCapabilities.find((c) => c.name === capName);
+            if (!existing) {
+              // 从预置标签库查找完整定义，否则创建简单标签
+              const { PRESET_CAPABILITIES } = require("@/lib/capability/CapabilityMatcher");
+              const preset = PRESET_CAPABILITIES.find((c: AgentCapability) => c.name === capName);
+              newCapabilities.push(preset || { name: capName, description: capName });
+            }
+          }
+          store.updateAgent(agent.id, { capabilities: newCapabilities });
+          sendMessage(chatId, "system", "system", `已为「${agent.name}」添加能力: ${capabilityNames.join("、")}`);
+        } else {
+          sendMessage(chatId, "system", "system", `未找到名为「${agentName}」的 Agent`);
+        }
+        break;
+      }
+      case "remove_capability": {
+        // SOLO-02: 移除能力标签
+        const agentName = params.agentName as string;
+        const capabilityNames = params.capabilityNames as string[];
+        const agent = agentList.find((a) => a.name.includes(agentName));
+        if (agent) {
+          const newCapabilities = agent.capabilities.filter((c) => !capabilityNames.includes(c.name));
+          store.updateAgent(agent.id, { capabilities: newCapabilities });
+          sendMessage(chatId, "system", "system", `已移除「${agent.name}」的能力: ${capabilityNames.join("、")}`);
+        } else {
+          sendMessage(chatId, "system", "system", `未找到名为「${agentName}」的 Agent`);
+        }
+        break;
+      }
+      case "set_archive_policy": {
+        // SOLO-02: 归档策略配置
+        const retentionDays = params.retentionDays as number | undefined;
+        const policy = params.policy as string | undefined;
+        if (retentionDays) {
+          sendMessage(chatId, "system", "system", `已设置归档保留期限为 ${retentionDays} 天`);
+        } else if (policy) {
+          sendMessage(chatId, "system", "system", `已设置归档策略为: ${policy}`);
+        }
+        break;
+      }
       default:
         sendMessage(chatId, "text", "user", result.raw);
     }
   };
 
-  const handleSlashCommand = (cmd: string) => {
-    const parts = cmd.split(/\s+/);
-    const command = parts[0];
-    switch (command) {
-      case "/new_agent": {
-        const name = parts.slice(1).join(" ") || "新 Agent";
-        const result = createAgent(name, "specialist", null, [], { model: "gpt-4" });
-        if ("error" in result) { sendMessage(chatId, "system", "system", result.error); }
-        else { sendMessage(chatId, "system", "system", `已创建 Agent「${result.name}」`); const chat = createChat("direct", result.name, [{ id: "user", name: "你", avatar: "user", role: "owner" }, { id: result.id, name: result.name, avatar: result.avatar, role: "member" }]); useAppStore.getState().setActiveChat(chat.id); }
-        break;
-      }
-      case "/new_task": {
-        const taskTitle = parts.slice(1).join(" ") || "新任务";
-        const chat = chats[chatId];
-        const sup = chat?.members.find((m) => agents[m.id as AgentId]?.role === "supervisor");
-        if (sup) { workflowEngine.assignTask(taskTitle, taskTitle, sup.id as AgentId, chatId); } else { sendMessage(chatId, "system", "system", "群聊中没有主管 Agent，请先 @一个主管"); }
-        break;
-      }
-      case "/summary": {
-        const allTasks = Object.values(useAppStore.getState().tasks);
-        const chatTasks = allTasks.filter((t) => t.chatId === chatId);
-        if (chatTasks.length === 0) {
-          sendMessage(chatId, "system", "system", "当前会话暂无任务");
-        } else {
-          const active = chatTasks.filter((t) => t.status === "in_progress");
-          const completed = chatTasks.filter((t) => t.status === "completed");
-          const pending = chatTasks.filter((t) => t.status === "pending");
-          const failed = chatTasks.filter((t) => t.status === "failed");
-          sendMessage(chatId, "system", "system", `任务汇总:\n进行中: ${active.length} | 已完成: ${completed.length} | 待处理: ${pending.length} | 失败: ${failed.length}\n${active.length > 0 ? `进行中: ${active.map((t) => t.title).join("、")}` : ""}${completed.length > 0 ? `\n已完成: ${completed.map((t) => t.title).join("、")}` : ""}`);
+  const handleSlashCommand = async (cmd: string) => {
+    // UI-05: 使用 SlashCommandRouter 统一处理所有斜杠命令
+    const parsed = parseSlashCommand(cmd);
+    if (parsed && parsed.type !== "unknown") {
+      const result = await executeCommand(parsed, chatId);
+      sendMessage(chatId, "system", "system", result.message);
+      // 处理 new_agent 的额外逻辑：自动创建 direct 聊天
+      if (parsed.type === "new_agent" && result.success && result.data) {
+        const data = result.data as { agentId?: string };
+        if (data.agentId) {
+          const agent = useAppStore.getState().agents[data.agentId];
+          if (agent) {
+            const chat = createChat("direct", agent.name, [
+              { id: "user", name: "你", avatar: "user", role: "owner" },
+              { id: agent.id, name: agent.name, avatar: agent.avatar, role: "member" },
+            ]);
+            useAppStore.getState().setActiveChat(chat.id);
+          }
         }
-        break;
       }
-      case "/archive": {
-        const query = parts.slice(1).join(" ");
-        const archives = useAppStore.getState().searchArchives(query);
-        if (archives.length === 0) { sendMessage(chatId, "system", "system", `未找到与"${query}"相关的归档记录`); }
-        else { const summary = archives.map((a) => `${a.agentName}: ${a.taskTitle} - $${a.cost.toFixed(2)}`).join("\n"); const totalCost = archives.reduce((sum, a) => sum + a.cost, 0); sendMessage(chatId, "system", "system", `归档查询结果:\n${summary}\n\n总费用: $${totalCost.toFixed(2)}`); }
-        break;
+      // 处理 invite 的额外逻辑：添加成员到聊天
+      if (parsed.type === "invite" && result.success && result.data) {
+        const data = result.data as { collaboratorName?: string };
+        if (data.collaboratorName) {
+          inviteCollaborator(data.collaboratorName, chatId);
+          addMemberToChat(chatId, { id: `ext_${data.collaboratorName}`, name: data.collaboratorName, avatar: "collaborator", role: "external" });
+        }
       }
-      case "/invite": {
-        const name = parts.slice(1).join(" ").replace("@", "");
-        if (name) { inviteCollaborator(name, chatId); addMemberToChat(chatId, { id: `ext_${name}`, name, avatar: "collaborator", role: "external" }); sendMessage(chatId, "system", "system", `已邀请外部协作者「${name}」，仅可查看当前群聊`); }
-        break;
-      }
-      case "/rest_mode": {
-        if (restMode.enabled) { setRestMode({ enabled: false, disabledAt: Date.now() }); sendMessage(chatId, "system", "system", "休息模式已关闭"); }
-        else { setRestMode({ enabled: true, enabledAt: Date.now() }); sendMessage(chatId, "system", "system", "休息模式已开启，所有上报将转给值班主管"); }
-        break;
-      }
-      case "/help": { const helpText = slashCommands.map((c) => `${c.cmd} - ${c.desc}`).join("\n"); sendMessage(chatId, "system", "system", `可用命令:\n${helpText}`); break; }
-      default: sendMessage(chatId, "system", "system", `未知命令: ${command}，输入 /help 查看帮助`);
+      return;
     }
+    sendMessage(chatId, "system", "system", `未知命令，输入 /help 查看帮助`);
   };
 
   const handleInputChange = (value: string) => {

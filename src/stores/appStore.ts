@@ -18,7 +18,7 @@ import type {
 // ============================================================
 
 const defaultAgentConfig = (): AgentConfig => ({
-  model: "gpt-4",
+  model: "deepseek-v4-flash",
   temperature: 0.7,
   timeout: 30000,
   maxRetries: 3,
@@ -44,7 +44,7 @@ export interface AppState {
   createAgent: (name: string, role: AgentRole, parentId: AgentId | null, capabilities?: AgentCapability[], config?: Partial<AgentConfig>) => Agent | { error: string };
   deleteAgent: (id: AgentId) => void;
   updateAgent: (id: AgentId, updates: Partial<Agent>) => void;
-  setParent: (agentId: AgentId, parentId: AgentId | null) => { success: boolean; error?: string };
+  setParent: (agentId: AgentId, parentId: AgentId | null, force?: boolean) => { success: boolean; error?: string }; // RFT-05: force 跳过循环检测
   updateMaxChildren: (agentId: AgentId, max: number) => void;
   grantSpanExemption: (agentId: AgentId, reason: string) => { success: boolean; error?: string }; // ORG-07
   revokeSpanExemption: (agentId: AgentId) => void; // ORG-07
@@ -61,6 +61,7 @@ export interface AppState {
   deleteProject: (projectId: string) => void;
   getTasksByProject: (projectId: string | null) => Task[]; // 按项目过滤任务
   getArchivesByProject: (projectId: string | null) => ArchiveRecord[]; // 按项目过滤归档
+  getScriptsByProject: (projectId: string | null) => Script[]; // 按项目过滤剧本 (KNL-06)
 
   // --- 聊天 ---
   chats: Record<ChatId, Chat>;
@@ -75,6 +76,7 @@ export interface AppState {
   messages: Record<ChatId, Message[]>;
   sendMessage: (chatId: ChatId, type: MessageType, senderId: AgentId | "user" | "system", content: string, extra?: Partial<Message>) => Message;
   resolveReportCard: (chatId: ChatId, messageId: MessageId, optionId: string) => void;
+  resolveBudgetAlert: (chatId: ChatId, messageId: MessageId, optionId: string) => void; // SOLO-03
 
   // --- 任务 ---
   tasks: Record<TaskId, Task>;
@@ -250,14 +252,14 @@ export const useAppStore = create<AppState>()(
     });
   },
 
-  setParent: (agentId, newParentId) => {
+  setParent: (agentId, newParentId, force) => {
     const state = get();
     const agent = state.agents[agentId];
     if (!agent) return { success: false, error: "Agent 不存在" };
 
-    // RFT-05: 循环引用检测
-    if (newParentId && state.detectCycle(agentId, newParentId)) {
-      return { success: false, error: `检测到循环引用，不能将 ${agent.name} 设为该上级的下属` };
+    // RFT-05: 循环引用检测（force=true 时跳过）
+    if (!force && newParentId && state.detectCycle(agentId, newParentId)) {
+      return { success: false, error: `检测到循环引用，不能将 ${agent.name} 设为该上级的下属。如需强制指定，请使用"强制指定上级"` };
     }
 
     // ORG-03: 检查新父级的管理幅度
@@ -416,12 +418,21 @@ export const useAppStore = create<AppState>()(
   getArchivesByProject: (projectId) => {
     const { archives } = get();
     if (projectId === null) return archives;
-    // ArchiveRecord 没有 projectId，通过 task 关联查找
-    const { tasks } = get();
-    const projectTaskIds = new Set(
-      (Object.values(tasks) as Task[]).filter((t) => t.projectId === projectId).map((t) => t.id)
-    );
-    return archives.filter((a) => projectTaskIds.has(a.taskId));
+    // KNL-06: 优先使用 ArchiveRecord 自身的 projectId，回退到通过 task 关联
+    return archives.filter((a) => {
+      if (a.projectId) return a.projectId === projectId;
+      // 回退：通过 task 关联查找
+      const { tasks } = get();
+      const task = (Object.values(tasks) as Task[]).find((t) => t.id === a.taskId);
+      return task?.projectId === projectId;
+    });
+  },
+
+  getScriptsByProject: (projectId) => {
+    const { scripts } = get();
+    const allScripts = Object.values(scripts) as Script[];
+    if (projectId === null) return allScripts;
+    return allScripts.filter((s) => s.projectId === projectId);
   },
 
   // ============================================================
@@ -523,6 +534,89 @@ export const useAppStore = create<AppState>()(
                 resolved: true,
                 resolvedOption: optionId,
                 options: m.reportCard.options.map((o) => ({
+                  ...o,
+                  selected: o.id === optionId,
+                })),
+              },
+            };
+          }),
+        },
+      };
+    });
+  },
+
+  // SOLO-03: 预算告警选项处理
+  resolveBudgetAlert: (chatId, messageId, optionId) => {
+    const state = get();
+    const msg = state.messages[chatId]?.find((m) => m.id === messageId);
+    if (!msg?.budgetAlert) return;
+
+    const alert = msg.budgetAlert;
+    const agentId = alert.agentId;
+    const agent = state.agents[agentId];
+    if (!agent) return;
+
+    switch (optionId) {
+      case "increase": {
+        // 增加额度至 1.5 倍
+        const newBudget = Math.round(alert.budgetTotal * 1.5);
+        set((s: AppState) => ({
+          agents: {
+            ...s.agents,
+            [agentId]: {
+              ...s.agents[agentId],
+              config: { ...s.agents[agentId].config, monthlyBudget: newBudget },
+              updatedAt: Date.now(),
+            },
+          },
+        }));
+        break;
+      }
+      case "downgrade": {
+        // 切换至低成本模型
+        const lowCostModel = "gpt-3.5-turbo";
+        set((s: AppState) => ({
+          agents: {
+            ...s.agents,
+            [agentId]: {
+              ...s.agents[agentId],
+              config: { ...s.agents[agentId].config, model: lowCostModel },
+              updatedAt: Date.now(),
+            },
+          },
+        }));
+        break;
+      }
+      case "auto_downgrade": {
+        // 标记超额后自动降级（在 config 中记录标记）
+        set((s: AppState) => ({
+          agents: {
+            ...s.agents,
+            [agentId]: {
+              ...s.agents[agentId],
+              config: { ...s.agents[agentId].config, budgetAlertThreshold: 1.0 }, // 超额后才触发
+              updatedAt: Date.now(),
+            },
+          },
+        }));
+        break;
+      }
+    }
+
+    // 标记该告警已处理
+    set((s: AppState) => {
+      const msgs = s.messages[chatId];
+      if (!msgs) return s;
+      return {
+        messages: {
+          ...s.messages,
+          [chatId]: msgs.map((m) => {
+            if (m.id !== messageId || !m.budgetAlert) return m;
+            return {
+              ...m,
+              budgetAlert: {
+                ...m.budgetAlert,
+                options: m.budgetAlert.options.map((o) => ({
                   ...o,
                   selected: o.id === optionId,
                 })),
@@ -640,7 +734,9 @@ export const useAppStore = create<AppState>()(
 
   addArchive: (record) => {
     const id = uuidv4();
-    const archive: ArchiveRecord = { ...record, id };
+    const state = get();
+    // KNL-06: 自动关联当前项目（如果 record 未指定 projectId）
+    const archive: ArchiveRecord = { ...record, id, projectId: record.projectId ?? state.currentProjectId ?? undefined };
     set((s: AppState) => ({ archives: [...s.archives, archive] }));
     return archive;
   },
@@ -665,7 +761,8 @@ export const useAppStore = create<AppState>()(
 
   saveScript: (name, description, steps) => {
     const id = uuidv4();
-    const script: Script = { id, name, description, steps, createdAt: Date.now() };
+    const state = get();
+    const script: Script = { id, name, description, steps, projectId: state.currentProjectId ?? undefined, createdAt: Date.now() };
     set((s: AppState) => ({ scripts: { ...s.scripts, [id]: script } }));
     return script;
   },
@@ -699,6 +796,12 @@ export const useAppStore = create<AppState>()(
       id: uuidv4(),
       name,
       chatIds: [chatId],
+      // SOLO-05: 外部协作者默认不可查看组织架构、全局归档、审计日志
+      permissions: {
+        canViewOrgChart: false,
+        canViewGlobalArchives: false,
+        canViewAuditLogs: false,
+      },
       invitedAt: Date.now(),
     };
     set((s: AppState) => ({ externalCollaborators: [...s.externalCollaborators, collab] }));

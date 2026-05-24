@@ -9,6 +9,7 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
   const isUser = message.senderId === "user";
   const isSystem = message.senderId === "system";
   const resolveReportCard = useAppStore((s) => s.resolveReportCard);
+  const resolveBudgetAlert = useAppStore((s) => s.resolveBudgetAlert);
   const agents = useAppStore((s) => s.agents);
   const senderName = isUser ? "你" : isSystem ? "系统" : agents[message.senderId]?.name || "未知";
 
@@ -36,7 +37,7 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
             {message.type === "text" && <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">{message.content}</p>}
             {message.type === "task_card" && message.taskCard && <TaskCardView card={message.taskCard} />}
             {message.type === "report_card" && message.reportCard && <ReportCardView card={message.reportCard} chatId={message.chatId} messageId={message.id} onResolve={resolveReportCard} />}
-            {message.type === "budget_alert" && message.budgetAlert && <BudgetAlertView alert={message.budgetAlert} />}
+            {message.type === "budget_alert" && message.budgetAlert && <BudgetAlertView alert={message.budgetAlert} chatId={message.chatId} messageId={message.id} onResolve={resolveBudgetAlert} />}
             {message.type === "heartbeat_alert" && message.heartbeatAlert && <HeartbeatAlertView alert={message.heartbeatAlert} />}
             {message.type === "progress" && message.progressData && <ProgressView data={message.progressData} />}
             {message.type === "file" && message.fileData && <FileView data={message.fileData} />}
@@ -135,6 +136,13 @@ function ReportCardView({ card, chatId, messageId, onResolve }: { card: ReportCa
             跨部门
           </span>
         )}
+        {/* BUP-07/UI-07: 跨部门回复标签 */}
+        {card.crossDeptReplyType === "consulted_superior" && (
+          <span className="text-[9px] font-medium text-[var(--warning)] bg-[var(--warning-muted)] px-1.5 py-[2px] rounded-md">已请示上级</span>
+        )}
+        {card.crossDeptReplyType === "direct_reply" && (
+          <span className="text-[9px] font-medium text-[var(--cta)] bg-[var(--cta-muted)] px-1.5 py-[2px] rounded-md">直接回复</span>
+        )}
         {/* BUP-06: 紧急上报标签 */}
         {card.isUrgent && (
           <span className="text-[9px] font-medium text-[var(--danger)] bg-[var(--danger-muted)] px-1.5 py-[2px] rounded-md animate-pulse">
@@ -154,9 +162,10 @@ function ReportCardView({ card, chatId, messageId, onResolve }: { card: ReportCa
   );
 }
 
-function BudgetAlertView({ alert }: { alert: BudgetAlert }) {
+function BudgetAlertView({ alert, chatId, messageId, onResolve }: { alert: BudgetAlert; chatId: string; messageId: string; onResolve: (chatId: string, messageId: string, optionId: string) => void; }) {
   const pct = Math.round(alert.usagePercent * 100);
   const isCritical = alert.usagePercent >= 0.9;
+  const resolved = alert.options.some((o) => o.selected);
   return (
     <div className="space-y-3 min-w-[220px]">
       <div className="flex items-center gap-2">
@@ -164,10 +173,11 @@ function BudgetAlertView({ alert }: { alert: BudgetAlert }) {
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={isCritical ? "var(--danger)" : "var(--warning)"} strokeWidth="1.2"><circle cx="5" cy="5" r="3.5"/><text x="5" y="6.5" textAnchor="middle" fontSize="5" fill={isCritical ? "var(--danger)" : "var(--warning)"}>$</text></svg>
         </div>
         <span className={`text-[12px] font-semibold font-heading ${isCritical ? "text-[var(--danger)]" : "text-[var(--warning)]"}`}>预算告警</span>
+        {resolved && <span className="text-[9px] font-medium text-[var(--cta)] bg-[var(--cta-muted)] px-1.5 py-[2px] rounded-md">已处理</span>}
       </div>
       <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">{alert.agentName} 本月已用 {pct}%（${alert.budgetUsed.toFixed(2)} / ${alert.budgetTotal.toFixed(2)}）</p>
       <div className="progress-track"><div className={`progress-fill ${isCritical ? "progress-danger" : "progress-warning"}`} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
-      <div className="flex flex-wrap gap-1.5 pt-0.5">{alert.options.map((opt) => <button key={opt.id} className="btn-decision">{opt.label}</button>)}</div>
+      <div className="flex flex-wrap gap-1.5 pt-0.5">{alert.options.map((opt) => <button key={opt.id} onClick={() => !resolved && onResolve(chatId, messageId, opt.id)} disabled={resolved} className={`btn-decision ${opt.selected ? "selected" : ""}`}>{opt.label}</button>)}</div>
     </div>
   );
 }

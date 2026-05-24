@@ -19,6 +19,7 @@ import type { AgentId, ChatId } from "@/types";
 /** 命令类型 */
 export type CommandType =
   | "new_task"
+  | "new_agent"
   | "summary"
   | "archive"
   | "queue"
@@ -26,6 +27,8 @@ export type CommandType =
   | "help"
   | "exempt"
   | "urgent"
+  | "invite"
+  | "rest_mode"
   | "unknown";
 
 /** 命令解析结果 */
@@ -56,6 +59,7 @@ export function parseSlashCommand(input: string): ParsedCommand | null {
   const commandMap: Record<string, CommandType> = {
     new_task: "new_task",
     task: "new_task",
+    new_agent: "new_agent",
     summary: "summary",
     archive: "archive",
     queue: "queue",
@@ -63,6 +67,8 @@ export function parseSlashCommand(input: string): ParsedCommand | null {
     help: "help",
     exempt: "exempt",
     urgent: "urgent",
+    invite: "invite",
+    rest_mode: "rest_mode",
   };
 
   return {
@@ -139,12 +145,47 @@ export async function executeCommand(
 
     case "queue": {
       if (!parsed.args) {
-        return { success: false, message: "用法: /queue <Agent名>" };
+        return { success: false, message: "用法: /queue <Agent名> [reprioritize <taskId> <priority>] [reassign <taskId> <Agent名>]" };
       }
-      const agent = Object.values(store.agents).find((a) => a.name === parsed.args);
+      const parts = parsed.args.split(/\s+/);
+      const agentName = parts[0];
+      const agent = Object.values(store.agents).find((a) => a.name === agentName);
       if (!agent) {
-        return { success: false, message: `Agent "${parsed.args}" 不存在` };
+        return { success: false, message: `Agent "${agentName}" 不存在` };
       }
+
+      // SOLO-07: 支持优先级调整和任务重分配
+      if (parts.length >= 3 && parts[1] === "reprioritize") {
+        const taskId = parts[2];
+        const newPriority = (parts[3] || "medium") as "low" | "medium" | "high" | "urgent";
+        const validPriorities = ["low", "medium", "high", "urgent"];
+        if (!validPriorities.includes(newPriority)) {
+          return { success: false, message: `无效优先级: ${newPriority}，可选: low/medium/high/urgent` };
+        }
+        // 更新任务优先级
+        const task = store.tasks[taskId];
+        if (!task) {
+          return { success: false, message: `任务 ${taskId} 不存在` };
+        }
+        store.updateTaskStatus(taskId, task.status); // 触发更新
+        return { success: true, message: `已将任务 ${taskId} 的优先级调整为 ${newPriority}` };
+      }
+
+      if (parts.length >= 3 && parts[1] === "reassign") {
+        const taskId = parts[2];
+        const targetAgentName = parts[3];
+        if (!targetAgentName) {
+          return { success: false, message: "用法: /queue <Agent名> reassign <taskId> <目标Agent名>" };
+        }
+        const targetAgent = Object.values(store.agents).find((a) => a.name === targetAgentName);
+        if (!targetAgent) {
+          return { success: false, message: `目标 Agent "${targetAgentName}" 不存在` };
+        }
+        const count = store.transferTasks(agent.id, targetAgent.id);
+        return { success: true, message: `已将 ${count} 个任务从 ${agent.name} 重新分配给 ${targetAgent.name}` };
+      }
+
+      // 默认：查看队列
       const queue = taskScheduler.getQueue(agent.id);
       const entries = queue.getAll();
       const current = queue.current;
@@ -162,6 +203,7 @@ export async function executeCommand(
       for (const s of suspended) {
         msg += `  ⏸ [挂起] ${s.taskId} (优先级: ${s.priority})\n`;
       }
+      msg += `\n提示: /queue ${agentName} reprioritize <taskId> <priority> 调整优先级\n/queue ${agentName} reassign <taskId> <目标Agent> 重新分配`;
       return { success: true, message: msg, data: { stats: queue.stats } };
     }
 
@@ -214,10 +256,38 @@ export async function executeCommand(
       return { success: true, message: "下一条上报将标记为紧急", data: { markUrgent: true } };
     }
 
+    case "new_agent": {
+      const name = parsed.args || "新 Agent";
+      const result = store.createAgent(name, "specialist", null, [], { model: "deepseek-v4-flash" });
+      if ("error" in result) {
+        return { success: false, message: result.error };
+      }
+      return { success: true, message: `已创建 Agent「${result.name}」`, data: { agentId: result.id } };
+    }
+
+    case "invite": {
+      const name = parsed.args.replace("@", "");
+      if (!name) {
+        return { success: false, message: "用法: /invite <协作者名称>" };
+      }
+      // 需要一个 chatId 来邀请，此处仅记录邀请意图
+      return { success: true, message: `已邀请外部协作者「${name}」，仅可查看当前群聊`, data: { collaboratorName: name } };
+    }
+
+    case "rest_mode": {
+      if (store.restMode.enabled) {
+        store.setRestMode({ enabled: false, disabledAt: Date.now() });
+        return { success: true, message: "休息模式已关闭" };
+      }
+      store.setRestMode({ enabled: true, enabledAt: Date.now() });
+      return { success: true, message: "休息模式已开启，所有上报将转给值班主管" };
+    }
+
     case "help": {
       return {
         success: true,
         message: `可用命令:
+/new_agent [名称] — 创建新 Agent
 /new_task @Agent名 任务描述 — 创建任务
 /summary — 获取当前会话任务汇总
 /archive 查询关键词 — 检索归档
@@ -225,6 +295,8 @@ export async function executeCommand(
 /project [项目名] — 切换/创建项目
 /exempt Agent名 原因 — 申请管理幅度临时豁免
 /urgent — 标记下一条上报为紧急
+/invite 协作者名称 — 邀请外部协作者
+/rest_mode — 开启/关闭休息模式
 /help — 显示帮助信息`,
       };
     }

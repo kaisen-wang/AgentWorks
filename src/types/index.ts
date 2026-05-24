@@ -21,7 +21,7 @@ export type AgentRole = "supervisor" | "specialist" | "general";
 
 /** Agent 配置 */
 export interface AgentConfig {
-  model: string;           // 使用的 LLM 模型，如 "gpt-4", "gpt-3.5-turbo"
+  model: string;           // 使用的 LLM 模型，如 "deepseek-v4-flash", "gpt-3.5-turbo"
   temperature: number;     // 生成温度
   timeout: number;         // 动作超时时间（毫秒），默认 30000
   maxRetries: number;      // 最大重试次数，默认 3
@@ -29,6 +29,7 @@ export interface AgentConfig {
   monthlyBudget: number;   // 月度预算（美元）
   budgetUsed: number;      // 已用预算
   budgetAlertThreshold: number; // 预算告警阈值（百分比），默认 0.9
+  reportFrequency?: "on_completion" | "daily" | "weekly"; // BUP-03: 上报频率，默认 on_completion
   llmEndpoint?: string;    // LLM API 端点（OpenAI 兼容接口）
   llmApiKey?: string;      // LLM API Key
 }
@@ -135,6 +136,7 @@ export interface ReportCard {
   options: DecisionOption[];
   isUrgent?: boolean;     // 紧急上报标记 (BUP-06)
   isCrossDepartment?: boolean; // 跨部门请求标记 (BUP-07)
+  crossDeptReplyType?: "consulted_superior" | "direct_reply"; // BUP-07/UI-07: 跨部门回复类型
   resolved?: boolean;
   resolvedOption?: string;
 }
@@ -255,6 +257,7 @@ export interface ArchiveRecord {
   model: string;           // 使用的模型
   duration: number;        // 耗时（毫秒）
   tags?: string[];         // 标签
+  projectId?: string;      // 所属项目 ID (KNL-06)
   createdAt: number;
 }
 
@@ -288,6 +291,7 @@ export interface Script {
   name: string;            // 如 "新品宣发_标准流程"
   description: string;
   steps: ScriptStep[];
+  projectId?: string;      // 所属项目 ID (KNL-06)
   createdAt: number;
 }
 
@@ -307,6 +311,11 @@ export interface ExternalCollaborator {
   id: string;
   name: string;
   chatIds: ChatId[];       // 可访问的群聊
+  permissions: {           // SOLO-05: 访问控制
+    canViewOrgChart: boolean;   // 查看组织架构
+    canViewGlobalArchives: boolean; // 查看全局归档
+    canViewAuditLogs: boolean;  // 查看审计日志
+  };
   invitedAt: number;
   removedAt?: number;
 }

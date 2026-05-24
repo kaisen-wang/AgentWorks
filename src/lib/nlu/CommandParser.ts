@@ -11,6 +11,8 @@
  */
 
 import type { AgentRole } from "@/types";
+import { matchCapabilitiesFromTask, PRESET_CAPABILITIES } from "@/lib/capability/CapabilityMatcher";
+import type { AgentCapability } from "@/types";
 
 // ============================================================
 // 解析结果类型
@@ -25,6 +27,9 @@ export type NLUIntent =
   | "run_script"
   | "set_threshold"
   | "search_archive"
+  | "add_capability"      // SOLO-02: 添加能力标签
+  | "remove_capability"   // SOLO-02: 移除能力标签
+  | "set_archive_policy"  // SOLO-02: 归档策略配置
   | "unknown";
 
 export interface NLUParseResult {
@@ -52,10 +57,12 @@ const ROLE_KEYWORDS: Record<string, AgentRole> = {
 };
 
 const MODEL_KEYWORDS: Record<string, string> = {
+  "deepseek-v4-flash": "deepseek-v4-flash",
+  "deepseek": "deepseek-v4-flash",
   "gpt-4o": "gpt-4o",
   "4o": "gpt-4o",
-  "gpt-4": "gpt-4",
-  "gpt4": "gpt-4",
+  "gpt-4": "deepseek-v4-flash",
+  "gpt4": "deepseek-v4-flash",
   "gpt-3.5": "gpt-3.5-turbo",
   "gpt3.5": "gpt-3.5-turbo",
   "gpt-3": "gpt-3.5-turbo",
@@ -105,6 +112,18 @@ export function parseNaturalLanguage(input: string): NLUParseResult {
   // 8. 归档检索意图 (KNL-03)
   const archiveResult = parseSearchArchive(text);
   if (archiveResult) return archiveResult;
+
+  // 9. 添加能力标签意图 (SOLO-02)
+  const addCapResult = parseAddCapability(text);
+  if (addCapResult) return addCapResult;
+
+  // 10. 移除能力标签意图 (SOLO-02)
+  const removeCapResult = parseRemoveCapability(text);
+  if (removeCapResult) return removeCapResult;
+
+  // 11. 归档策略配置意图 (SOLO-02)
+  const archivePolicyResult = parseSetArchivePolicy(text);
+  if (archivePolicyResult) return archivePolicyResult;
 
   return { intent: "unknown", confidence: 0, params: {}, raw: text };
 }
@@ -162,6 +181,17 @@ function parseCreateAgent(text: string): NLUParseResult | null {
       const budgetMatch = text.match(/预算\s*[$￥]?\s*(\d+)/);
       if (budgetMatch) {
         params.monthlyBudget = Number(budgetMatch[1]);
+      }
+
+      // ORG-01/ACT-05: 从自然语言中提取能力标签
+      // 使用 CapabilityMatcher 的关键词匹配从名称和描述中提取能力
+      const capabilityNames = matchCapabilitiesFromTask(namePart);
+      if (capabilityNames.length > 0) {
+        // 将匹配的能力标签名映射为完整的 AgentCapability 对象
+        const capabilities: AgentCapability[] = capabilityNames
+          .map((name) => PRESET_CAPABILITIES.find((c) => c.name === name))
+          .filter((c): c is AgentCapability => c !== undefined);
+        params.capabilities = capabilities;
       }
 
       return {
@@ -414,6 +444,26 @@ function parseUpdateConfig(text: string): NLUParseResult | null {
     }
   }
 
+  // 检查上报频率修改 (BUP-03)
+  const reportFreqKeywords = ["上报频率改成", "上报频率改为", "上报频率设为", "上报频率设置为"];
+  for (const kw of reportFreqKeywords) {
+    const idx = text.indexOf(kw);
+    if (idx > 0) {
+      const before = text.slice(0, idx).replace(/^(把|将)\s*/, "").replace(/的$/, "").trim();
+      const after = text.slice(idx + kw.length).trim();
+      const freqMap: Record<string, string> = { "完成时": "on_completion", "每日": "daily", "每天": "daily", "每周": "weekly", "每星期": "weekly" };
+      const freq = freqMap[after] || after;
+      if (before && freq) {
+        return {
+          intent: "update_config",
+          confidence: 0.8,
+          params: { agentName: before, field: "reportFrequency", value: freq },
+          raw: text,
+        };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -486,6 +536,91 @@ function parseSearchArchive(text: string): NLUParseResult | null {
           raw: text,
         };
       }
+    }
+  }
+
+  return null;
+}
+
+/** 解析"添加能力标签"意图 (SOLO-02) */
+function parseAddCapability(text: string): NLUParseResult | null {
+  // 匹配："给营销主管添加文案撰写能力" / "让设计专员具备图像生成能力"
+  const patterns = [
+    /(?:给|为|让)(.+?)(?:添加|增加|赋予|具备)(.+?)(?:能力|标签|技能)/,
+    /(?:添加|增加|赋予)(.+?)(?:能力|标签|技能)(?:给|到|至)(.+)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const agentName = match[1].trim();
+      const capabilityStr = match[2].trim();
+      // 使用 CapabilityMatcher 从能力描述中提取匹配的标签
+      const matchedNames = matchCapabilitiesFromTask(capabilityStr);
+      return {
+        intent: "add_capability",
+        confidence: 0.8,
+        params: { agentName, capabilityNames: matchedNames.length > 0 ? matchedNames : [capabilityStr] },
+        raw: text,
+      };
+    }
+  }
+
+  return null;
+}
+
+/** 解析"移除能力标签"意图 (SOLO-02) */
+function parseRemoveCapability(text: string): NLUParseResult | null {
+  // 匹配："移除营销主管的文案撰写能力" / "去掉设计专员的图像生成标签"
+  const patterns = [
+    /(?:移除|去掉|删除|取消)(.+?)(?:的)?(.+?)(?:能力|标签|技能)/,
+    /(?:给|为)(.+?)(?:移除|去掉|删除|取消)(.+?)(?:能力|标签|技能)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const agentName = match[1].trim();
+      const capabilityStr = match[2].trim();
+      const matchedNames = matchCapabilitiesFromTask(capabilityStr);
+      return {
+        intent: "remove_capability",
+        confidence: 0.8,
+        params: { agentName, capabilityNames: matchedNames.length > 0 ? matchedNames : [capabilityStr] },
+        raw: text,
+      };
+    }
+  }
+
+  return null;
+}
+
+/** 解析"归档策略配置"意图 (SOLO-02) */
+function parseSetArchivePolicy(text: string): NLUParseResult | null {
+  // 匹配："设置归档保留30天" / "归档策略改为自动清理" / "设置归档自动清理90天"
+  const patterns = [
+    /(?:设置|配置|设定)(?:归档)?(?:保留|保存|清理)(?:期|时间|天数)?(?:为|到|设为)?\s*(\d+)\s*天/,
+    /(?:归档)(?:策略|规则|配置)(?:改为|设为|设置为)\s*(.+)/,
+    /(?:设置|配置)(?:归档)(?:策略|规则|自动清理)(?:为|到)?\s*(.+)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const params: Record<string, unknown> = {};
+      const value = match[1].trim();
+      const days = parseInt(value, 10);
+      if (!isNaN(days)) {
+        params.retentionDays = days;
+      } else {
+        params.policy = value;
+      }
+      return {
+        intent: "set_archive_policy",
+        confidence: 0.8,
+        params,
+        raw: text,
+      };
     }
   }
 
