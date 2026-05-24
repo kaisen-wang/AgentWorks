@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useAppStore } from "@/stores/appStore";
+import { useState, useEffect } from "react";
+import { useAppStore, startAutoSync, stopAutoSync } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { OrgSidebar } from "@/components/org/OrgSidebar";
 import { OrgChartView } from "@/components/org/OrgChartView";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { KnowledgePanel } from "@/components/common/KnowledgePanel";
 import { CostPanel } from "@/components/common/CostPanel";
+import { ScriptPanel } from "@/components/common/ScriptPanel";
+import { RestModePanel } from "@/components/common/RestModePanel";
 
 export default function HomePage() {
   const activeChatId = useAppStore((s: AppState) => s.activeChatId);
@@ -17,6 +19,14 @@ export default function HomePage() {
   const [showOrgChart, setShowOrgChart] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showCost, setShowCost] = useState(false);
+  const [showScript, setShowScript] = useState(false);
+  const [showRestMode, setShowRestMode] = useState(false);
+
+  // 启动服务端数据自动同步
+  useEffect(() => {
+    startAutoSync();
+    return () => stopAutoSync();
+  }, []);
 
   const agentCount = Object.keys(agents).length;
 
@@ -116,6 +126,18 @@ export default function HomePage() {
             </svg>
             成本
           </button>
+          <button onClick={() => setShowScript(true)} className="btn-ghost">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <rect x="2" y="1" width="10" height="12" rx="1.5"/><line x1="5" y1="4" x2="9" y2="4"/><line x1="5" y1="6.5" x2="9" y2="6.5"/><line x1="5" y1="9" x2="7" y2="9"/>
+            </svg>
+            剧本
+          </button>
+          <button onClick={() => setShowRestMode(true)} className="btn-ghost">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <path d="M8 2C5 2 2.5 4.5 2.5 7.5C2.5 10.5 5 13 8 13C8.7 13 9.3 12.9 9.9 12.7C8 11.5 6.8 9.5 6.8 7.2C6.8 5 8 3 9.9 1.8C9.3 1.6 8.7 1.5 8 1.5"/>
+            </svg>
+            休息
+          </button>
 
           <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
 
@@ -185,6 +207,8 @@ export default function HomePage() {
       {showOrgChart && <OrgChartView onClose={() => setShowOrgChart(false)} />}
       {showKnowledge && <KnowledgePanel onClose={() => setShowKnowledge(false)} />}
       {showCost && <CostPanel onClose={() => setShowCost(false)} />}
+      {showScript && <ScriptPanel onClose={() => setShowScript(false)} />}
+      {showRestMode && <RestModePanel onClose={() => setShowRestMode(false)} />}
     </div>
   );
 }

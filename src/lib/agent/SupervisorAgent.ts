@@ -161,20 +161,16 @@ export class SupervisorAgent extends BaseAgent {
 
   /**
    * 上报 - 主管上报给老板
-   * 构造结构化上报内容（BUP-02）
+   * 构造结构化上报内容（BUP-02），委托给 BaseAgent.report 真正发送
    */
   async report(content: ReportContent, targetId?: AgentId): Promise<void> {
-    this.setStatus("reporting");
-    try {
-      const report: ReportContent = {
-        ...content,
-        type: content.type || "decision",
-        title: content.title || `${this.name} 上报`,
-      };
-      console.log(`[SupervisorAgent] ${this.name} 上报:`, JSON.stringify(report, null, 2));
-    } finally {
-      this.setStatus("idle");
-    }
+    const report: ReportContent = {
+      ...content,
+      type: content.type || "decision",
+      title: content.title || `${this.name} 上报`,
+    };
+    // 委托给 BaseAgent.report，真正发送到 store/chat
+    await super.report(report, targetId);
   }
 
   async archive(input: ArchiveInput): Promise<string> {

@@ -171,11 +171,151 @@ export class WorkflowEngine {
 
     store.setAgentStatus(supervisorId, "idle");
     store.addAuditLog(supervisorId, "execute", `拆解任务: ${taskDescription} → ${decomposition.subTasks.length} 个子任务`);
+
+    // 自动驱动子任务执行（执行-上报闭环）
+    const currentTask = store.tasks[taskId];
+    if (currentTask) {
+      for (const subTask of currentTask.subTasks) {
+        if (subTask.status === "pending") {
+          // 异步执行，不阻塞拆解流程
+          this.executeSubTask(subTask.id, taskId, chatId).catch((err) => {
+            console.error(`[WorkflowEngine] 子任务 ${subTask.id} 执行失败:`, err);
+          });
+        }
+      }
+    }
   }
 
   // ============================================================
   // Bottom-up: 从下到上
   // ============================================================
+
+  /**
+   * 执行子任务并自动触发上报闭环
+   *
+   * 流程：执行 → 归档 → 上报上级 → 检查父任务是否全部完成
+   */
+  async executeSubTask(
+    subTaskId: TaskId,
+    parentTaskId: TaskId,
+    chatId: ChatId
+  ): Promise<void> {
+    const store = useAppStore.getState();
+    const task = store.tasks[parentTaskId];
+    if (!task) return;
+
+    const subTask = task.subTasks.find((s: SubTask) => s.id === subTaskId);
+    if (!subTask || subTask.status !== "pending") return;
+
+    const agent = store.agents[subTask.assigneeId];
+    if (!agent) return;
+
+    // 更新子任务状态为执行中
+    store.updateSubTaskStatus(parentTaskId, subTaskId, "in_progress");
+    store.setAgentStatus(subTask.assigneeId, "executing");
+
+    // 获取 Agent 实例并执行
+    const instance = this.getAgentInstance(agent);
+    const startTime = Date.now();
+
+    try {
+      const result = await instance.executeWithRetry(subTask.description, {
+        llmConfig: agent.config.llmEndpoint ? {
+          endpoint: agent.config.llmEndpoint,
+          apiKey: agent.config.llmApiKey || "",
+          model: agent.config.model,
+        } : undefined,
+      });
+
+      const duration = Date.now() - startTime;
+
+      if (result.success) {
+        // 更新子任务结果
+        store.updateSubTaskStatus(parentTaskId, subTaskId, "completed", result.data);
+
+        // 归档
+        store.addArchive({
+          taskId: subTaskId,
+          agentId: subTask.assigneeId,
+          agentName: agent.name,
+          taskTitle: subTask.title,
+          input: subTask.description,
+          output: result.data,
+          cost: result.cost || 0,
+          apiCalls: result.apiCalls || 0,
+          model: result.model || agent.config.model,
+          duration,
+          createdAt: Date.now(),
+        });
+
+        // 更新预算
+        if (result.cost && result.cost > 0) {
+          store.updateAgentBudget(subTask.assigneeId, result.cost);
+        }
+
+        // 上报完成
+        await this.reportCompletion(subTask.assigneeId, parentTaskId, result.data, chatId);
+
+        // 发送进度消息
+        store.sendMessage(chatId, "text", subTask.assigneeId, `子任务「${subTask.title}」已完成: ${result.data.slice(0, 100)}`);
+      } else {
+        // 执行失败
+        store.updateSubTaskStatus(parentTaskId, subTaskId, "failed", result.error);
+
+        // 异常上报
+        if (agent.parentId) {
+          await this.reportDecision(
+            subTask.assigneeId,
+            chatId,
+            "子任务执行失败",
+            result.error || "未知错误",
+            `任务: ${subTask.description}`,
+            [
+              { id: "retry", label: "重试" },
+              { id: "skip", label: "跳过" },
+              { id: "reassign", label: "重新分配" },
+            ]
+          );
+        }
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      store.updateSubTaskStatus(parentTaskId, subTaskId, "failed", errorMsg);
+    } finally {
+      store.setAgentStatus(subTask.assigneeId, "idle");
+    }
+
+    // 检查父任务是否全部完成
+    this.checkParentTaskCompletion(parentTaskId, chatId);
+  }
+
+  /**
+   * 检查父任务的所有子任务是否完成，若全部完成则汇总上报
+   */
+  private checkParentTaskCompletion(parentTaskId: TaskId, chatId: ChatId): void {
+    const store = useAppStore.getState();
+    const task = store.tasks[parentTaskId];
+    if (!task || task.status !== "in_progress") return;
+
+    const allCompleted = task.subTasks.every(
+      (s: SubTask) => s.status === "completed" || s.status === "failed" || s.status === "cancelled"
+    );
+
+    if (allCompleted) {
+      const completedCount = task.subTasks.filter((s: SubTask) => s.status === "completed").length;
+      const failedCount = task.subTasks.filter((s: SubTask) => s.status === "failed").length;
+
+      store.updateTaskStatus(parentTaskId, failedCount === 0 ? "completed" : "failed");
+
+      // 主管汇总
+      const supervisor = store.agents[task.assigneeId];
+      if (supervisor) {
+        const summary = `任务「${task.title}」执行完毕: ${completedCount} 成功, ${failedCount} 失败`;
+        store.sendMessage(chatId, "text", task.assigneeId, summary);
+        store.addAuditLog(task.assigneeId, "summarize", summary);
+      }
+    }
+  }
 
   /**
    * 下属完成执行后上报（BUP-01, BUP-03）

@@ -137,29 +137,95 @@ export abstract class BaseAgent implements IAgentActions {
 
   /**
    * 上报 - 将结果/问题发送给上级
-   * 默认实现：无阻塞发送（由 workflow 引擎处理路由）
+   * 真正发送消息到 store/chat，由 workflow 引擎处理路由
    */
   async report(content: ReportContent, targetId?: AgentId): Promise<void> {
     this.setStatus("reporting");
     try {
-      // 上报逻辑由 WorkflowEngine 处理
-      // 这里只构造上报内容，实际路由在引擎层
-      console.log(`[BaseAgent] ${this.name} 上报给 ${targetId || "上级"}:`, content);
-    } finally {
+      const store = useAppStore.getState();
+      const agent = store.agents[this.id];
+      const parentId = targetId || agent?.parentId;
+
+      // 构造上报消息内容
+      let messageText = "";
+      switch (content.type) {
+        case "decision":
+          messageText = `【需要决策】${content.title}${content.problem ? `\n问题: ${content.problem}` : ""}${content.attemptedSolutions ? `\n已尝试: ${content.attemptedSolutions}` : ""}`;
+          break;
+        case "error":
+          messageText = `【异常上报】${content.title}${content.problem ? `\n${content.problem}` : ""}`;
+          break;
+        case "progress":
+          messageText = `【进度更新】${content.title}`;
+          break;
+        case "budget_alert":
+          messageText = `【预算告警】${content.title}`;
+          break;
+        case "heartbeat_alert":
+          messageText = `【心跳告警】${content.title}`;
+          break;
+        default:
+          messageText = content.title;
+      }
+
+      // 找到关联的聊天
+      const chats = Object.values(store.chats);
+      const chat = chats.find(c => {
+        const memberIds = c.members.map(m => m.id);
+        return memberIds.includes(this.id) && (parentId ? memberIds.includes(parentId) : true);
+      });
+
+      if (chat) {
+        // 如果是决策上报，发送 report_card 消息
+        if (content.type === "decision" && content.options) {
+          const reportCard = {
+            title: content.title,
+            problem: content.problem || "",
+            attemptedSolutions: content.attemptedSolutions,
+            options: content.options,
+            resolved: false,
+          };
+          store.sendMessage(chat.id, "report_card", this.id, messageText, { reportCard });
+        } else {
+          store.sendMessage(chat.id, "text", this.id, messageText);
+        }
+      }
+
+      // 审计日志
+      store.addAuditLog(this.id, "report", messageText);
+    } catch { /* store 可能未初始化 */ }
+    finally {
       this.setStatus("idle");
     }
   }
 
   /**
    * 归档 - 保存到持久存储
-   * 默认实现：返回归档 ID（实际存储由 store 处理）
+   * 真正写入 store 持久化
    */
   async archive(input: ArchiveInput): Promise<string> {
     this.setStatus("archived");
     const archiveId = `archive_${this.id}_${Date.now()}`;
-    // 记录审计日志
     try {
-      useAppStore.getState().addAuditLog(this.id, "archive", `归档任务 ${input.taskId}, 费用 ${input.cost}`);
+      const store = useAppStore.getState();
+      // 写入 store 持久化
+      store.addArchive({
+        taskId: input.taskId,
+        agentId: this.id,
+        agentName: this.name,
+        taskTitle: input.input.slice(0, 50),
+        input: input.input,
+        output: input.output,
+        intermediateSteps: input.intermediateSteps,
+        cost: input.cost,
+        apiCalls: input.apiCalls,
+        model: input.model,
+        duration: input.duration,
+        tags: input.tags,
+        createdAt: Date.now(),
+      });
+      // 记录审计日志
+      store.addAuditLog(this.id, "archive", `归档任务 ${input.taskId}, 费用 ${input.cost}`);
     } catch { /* store 可能未初始化 */ }
     return archiveId;
   }

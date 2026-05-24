@@ -118,6 +118,46 @@
 
 ## 四、变更日志
 
+### 2026-05-23 (8): 核心执行闭环修复 + 基础设施真正接入
+
+**核心执行闭环修复:**
+- `SpecialistAgent.ts`: execute 从空壳改为真正调用 LLM（策略1: LLM API 调用; 策略2: 基于能力标签的结构化结果）
+- `WorkflowEngine.ts`: 新增 `executeSubTask` 方法，驱动子任务执行→归档→上报→检查父任务完成的闭环
+- `WorkflowEngine.ts`: `decomposeAndAssign` 完成后自动触发子任务执行（异步，不阻塞拆解流程）
+- `WorkflowEngine.ts`: 新增 `checkParentTaskCompletion` 方法，所有子任务完成后主管自动汇总
+
+**Agent 四动作真正实现:**
+- `BaseAgent.ts`: `report()` 从 console.log 存根改为真正发送消息到 store/chat（支持决策卡片、异常上报、进度上报等5种类型）
+- `BaseAgent.ts`: `archive()` 从仅返回 ID 改为真正调用 `store.addArchive()` 写入持久化
+- `SupervisorAgent.ts`: `report()` 委托给 `super.report()` 真正发送到 store/chat
+
+**API 路由接入数据库:**
+- `/api/agents/route.ts`: GET 从 SQLite 读取 Agent 列表; POST 创建 Agent 到 SQLite（含管理幅度检查、循环引用检测）
+- `/api/chat/route.ts`: GET 从 SQLite 读取会话; POST 创建会话到 SQLite
+- `/api/messages/route.ts`: GET 从 SQLite 读取消息; POST 发送消息到 SQLite
+- `/api/tasks/route.ts`: GET 从 SQLite 读取任务; POST 创建任务; PATCH 更新状态/优先级/分配
+- 所有 API 在 SQLite 不可用时自动降级到前端 store 模式
+
+**前端数据同步:**
+- `appStore.ts`: 新增 `syncToServer()` / `loadFromServer()` / `startAutoSync()` / `stopAutoSync()` 函数
+- `page.tsx`: useEffect 启动自动同步（30秒间隔），首次加载从服务端拉取数据
+
+**WebSocket 服务端:**
+- `server.ts` (NEW): Next.js 自定义 Server + WebSocket 服务端，支持多客户端实时消息广播
+- `useWebSocket.ts`: 开发模式下自动连接 ws://localhost:3001
+- `package.json`: 新增 `dev:ws` / `start:ws` 脚本
+
+**管理 UI 补全:**
+- `ScriptPanel.tsx` (NEW): 剧本管理面板 - 查看/运行/删除剧本，支持变量替换
+- `RestModePanel.tsx` (NEW): 休息模式配置面板 - 开关/值班主管/处理规则
+- `page.tsx`: 工具栏新增"剧本"和"休息"按钮，集成两个新面板
+
+**测试修复:**
+- `SpecialistAgent.test.ts`: 更新 execute 测试以匹配新的返回格式
+
+**测试统计:** 321 tests, 通过率 100%
+**构建状态:** `npx next build` 成功
+
 ### 2026-05-23 (7): 基础设施集成 + 未追踪需求补全
 
 **基础设施集成:**

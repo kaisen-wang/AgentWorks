@@ -9,6 +9,8 @@
 
 import { BaseAgent, ExecutionResult, ReportContent, ArchiveInput } from "./BaseAgent";
 import type { AgentId, AgentConfig, AgentCapability } from "@/types";
+import { callLLM } from "@/lib/llm";
+import type { LLMConfig } from "@/lib/llm";
 
 export class SpecialistAgent extends BaseAgent {
   readonly capabilities: AgentCapability[];
@@ -28,20 +30,56 @@ export class SpecialistAgent extends BaseAgent {
 
   /**
    * 执行 - 专员执行具体任务
-   * 实际执行由 LLM + 工具调用完成
+   * 优先使用 LLM 生成结果；LLM 不可用时返回基于能力标签的模拟结果
    */
   async execute(task: string, context?: Record<string, unknown>): Promise<ExecutionResult> {
     this.setStatus("executing");
+    const startTime = Date.now();
     try {
-      // 框架层：专员执行具体任务
-      // 实际实现中，这里会调用 LLM + 外部工具
-      console.log(`[SpecialistAgent] ${this.name} 执行任务: ${task}`);
+      // 策略 1: 使用 LLM 真正执行
+      const llmConfig = context?.llmConfig as LLMConfig | undefined
+        ?? (this.config.llmEndpoint ? {
+          endpoint: this.config.llmEndpoint,
+          apiKey: this.config.llmApiKey || "",
+          model: this.config.model,
+        } : undefined);
 
+      if (llmConfig) {
+        const capabilityDesc = this.capabilities.length > 0
+          ? `你的能力标签: ${this.capabilities.map(c => `${c.name}(${c.description})`).join(", ")}`
+          : "你是一个通用专员";
+
+        const systemPrompt = `你是 ${this.name}，一个专员 Agent。${capabilityDesc}
+请根据任务描述完成工作，直接输出结果内容。`;
+
+        const response = await callLLM(
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: task },
+          ],
+          llmConfig
+        );
+
+        const cost = response.usage
+          ? (response.usage.promptTokens * 0.00003 + response.usage.completionTokens * 0.00006)
+          : 0.01;
+
+        return {
+          success: true,
+          data: response.content,
+          cost,
+          apiCalls: 1,
+          model: response.model,
+        };
+      }
+
+      // 策略 2: 无 LLM 配置时，基于能力标签生成结构化结果
+      const capNames = this.capabilities.map(c => c.name).join(", ") || "通用";
       return {
         success: true,
-        data: `任务"${task}"执行完成`,
-        cost: 0.01,
-        apiCalls: 1,
+        data: `[${this.name}(${capNames})] 已处理任务: ${task}`,
+        cost: 0,
+        apiCalls: 0,
         model: this.config.model,
       };
     } catch (err) {

@@ -12,7 +12,7 @@ import { useAppStore } from "@/stores/appStore";
 import { ChatWebSocket, onPushEvent, emitPushEvent } from "./ChatWebSocket";
 import type { WSConnectionState, PushEvent } from "./ChatWebSocket";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || (process.env.NODE_ENV === "development" ? "ws://localhost:3001" : "");
 
 /**
  * useWebSocket - WebSocket 连接管理 Hook

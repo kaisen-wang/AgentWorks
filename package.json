@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:ws": "tsx server.ts",
     "build": "next build",
     "start": "next start",
+    "start:ws": "node --import tsx server.ts",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest"

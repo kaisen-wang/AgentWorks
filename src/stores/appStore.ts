@@ -1129,3 +1129,78 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+// ============================================================
+// 服务端数据同步（/api/sync 集成）
+// ============================================================
+
+let syncTimer: ReturnType<typeof setInterval> | null = null;
+const SYNC_INTERVAL = 30_000; // 30 秒同步一次
+const SYNC_ENDPOINT = "/api/sync";
+
+/** 同步数据到服务端 SQLite */
+export async function syncToServer(): Promise<{ synced: boolean; error?: string }> {
+  try {
+    const state = useAppStore.getState();
+    const payload = {
+      agents: Object.values(state.agents),
+      projects: state.projects,
+      tasks: Object.values(state.tasks),
+    };
+
+    const res = await fetch(SYNC_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      return { synced: false, error: `HTTP ${res.status}` };
+    }
+
+    const data = await res.json();
+    return { synced: data.synced !== false };
+  } catch (err) {
+    return { synced: false, error: err instanceof Error ? err.message : "未知错误" };
+  }
+}
+
+/** 从服务端加载数据 */
+export async function loadFromServer(): Promise<boolean> {
+  try {
+    const res = await fetch(SYNC_ENDPOINT);
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data.agents) {
+      useAppStore.setState((state: AppState) => ({
+        ...state,
+        // 合并服务端数据到 store（服务端数据优先）
+        agents: data.agents.reduce((acc: Record<AgentId, Agent>, a: Agent) => {
+          acc[a.id] = a;
+          return acc;
+        }, {} as Record<AgentId, Agent>),
+      }));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 启动定时同步 */
+export function startAutoSync(): void {
+  if (syncTimer) return;
+  // 首次加载时从服务端拉取
+  loadFromServer().catch(() => {});
+  syncTimer = setInterval(() => {
+    syncToServer().catch(() => {});
+  }, SYNC_INTERVAL);
+}
+
+/** 停止定时同步 */
+export function stopAutoSync(): void {
+  if (syncTimer) {
+    clearInterval(syncTimer);
+    syncTimer = null;
+  }
+}
