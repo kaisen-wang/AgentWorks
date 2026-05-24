@@ -1165,23 +1165,33 @@ describe("appStore - EXT-03 Webhook 事件触发", () => {
     expect(useAppStore.getState().webhooks).toHaveLength(0);
   });
 
-  it("emitEvent 触发匹配的 Webhook", () => {
+  it("emitEvent 触发匹配的 Webhook", async () => {
+    // Mock fetch 以避免真实 HTTP 请求
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = mockFetch;
+
     useAppStore.getState().registerWebhook({
       name: "任务通知", url: "https://example.com/hook", events: ["task.created"], enabled: true,
     });
     useAppStore.getState().emitEvent("task.created", { taskId: "t1" });
-    // 验证审计日志中有 webhook_emit
-    const logs = useAppStore.getState().auditLogs;
-    expect(logs.some((l) => l.action === "webhook_emit")).toBe(true);
+    // 等待异步 fetch 完成后审计日志写入
+    await vi.waitFor(() => {
+      const logs = useAppStore.getState().auditLogs;
+      expect(logs.some((l) => l.action === "webhook_emit")).toBe(true);
+    });
   });
 
   it("emitEvent 不触发不匹配的 Webhook", () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = mockFetch;
+
     useAppStore.getState().registerWebhook({
       name: "任务通知", url: "https://example.com/hook", events: ["task.completed"], enabled: true,
     });
     useAppStore.getState().emitEvent("task.created", { taskId: "t1" });
     const logs = useAppStore.getState().auditLogs;
     expect(logs.some((l) => l.action === "webhook_emit")).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("禁用的 Webhook 不触发", () => {

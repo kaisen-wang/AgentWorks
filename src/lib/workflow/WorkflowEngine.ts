@@ -12,6 +12,7 @@
 
 import { useAppStore } from "@/stores/appStore";
 import { SupervisorAgent, SpecialistAgent } from "@/lib/agent";
+import { sendSmsSummary } from "@/lib/notification/NotificationService";
 import type {
   AgentId, TaskId, ChatId, MessageId, Agent, Task, SubTask, Message,
   ReportCard, DecisionOption, TaskCard, BudgetAlert, HeartbeatAlert,
@@ -983,9 +984,20 @@ export function handleRestModeTask(
         }
 
         case "sms_summary": {
-          // 发送短信摘要（模拟）
-          store.sendMessage(chatId, "system", "system", `[休息模式] 短信摘要: ${taskTitle} - ${taskDescription.slice(0, 50)}`);
-          return { handled: true, action: "sms_summary", message: "短信摘要已发送" };
+          // 真正发送短信摘要，未配置网关时降级为系统消息
+          sendSmsSummary({
+            title: `[休息模式] ${taskTitle}`,
+            body: taskDescription.slice(0, 200),
+            urgency: "normal",
+          }).then((result) => {
+            if (result.fallback || !result.success) {
+              // 降级：发送系统消息
+              store.sendMessage(chatId, "system", "system", `[休息模式] 短信摘要: ${taskTitle} - ${taskDescription.slice(0, 50)}`);
+            } else {
+              store.sendMessage(chatId, "system", "system", `[休息模式] 短信已发送 (ID: ${result.messageId}): ${taskTitle}`);
+            }
+          });
+          return { handled: true, action: "sms_summary", message: "短信摘要发送中" };
         }
 
         case "record": {

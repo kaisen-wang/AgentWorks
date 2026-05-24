@@ -685,7 +685,7 @@ describe("SOLO-01 休息模式执行引擎", () => {
     expect(result.message).toContain("营销主管");
   });
 
-  it("sms_summary 规则发送短信摘要", () => {
+  it("sms_summary 规则发送短信摘要", async () => {
     const { chat } = setupBasicOrg();
     useAppStore.getState().setRestMode({
       enabled: true,
@@ -694,8 +694,11 @@ describe("SOLO-01 休息模式执行引擎", () => {
     const result = handleRestModeTask("任务", "描述内容", chat.id);
     expect(result.handled).toBe(true);
     expect(result.action).toBe("sms_summary");
-    const messages = useAppStore.getState().messages[chat.id];
-    expect(messages.some((m) => m.content.includes("短信摘要"))).toBe(true);
+    // sendSmsSummary 是异步的，未配置网关时降级为系统消息
+    await vi.waitFor(() => {
+      const messages = useAppStore.getState().messages[chat.id];
+      expect(messages?.some((m) => m.content.includes("短信摘要") || m.content.includes("短信已发送"))).toBe(true);
+    });
   });
 
   it("record 规则仅记录", () => {

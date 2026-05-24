@@ -3,7 +3,7 @@
 > 本文档记录项目开发状态、已完成功能、测试覆盖情况和待办事项。
 > **每次新会话开始时应加载此文档以了解项目当前状态。**
 
-最后更新: 2026-05-23
+最后更新: 2026-05-24
 
 ---
 
@@ -15,7 +15,7 @@
 | 技术栈 | Next.js 16 + React 19 + TypeScript + Zustand 5 + Tailwind CSS 4 |
 | 测试框架 | Vitest 4 (jsdom) + @testing-library/react 16 |
 | 测试运行 | `npm test` (单次) / `npm run test:watch` (监听) |
-| 当前测试 | 15 个文件, 321 个用例, 全部通过 |
+| 当前测试 | 16 个文件, 328 个用例, 全部通过 |
 
 ---
 
@@ -62,9 +62,9 @@
 | RFT-04 | 审计日志+内容哈希 | P2 | FULL | TESTED | addAuditLog + contentHash |
 | EXT-01 | 外部工具授权 | P1 | FULL | TESTED | ToolAuthPanel UI 已测 |
 | EXT-02 | 插件市场 | P2 | FULL | TESTED | PluginDefinition + installPlugin/uninstallPlugin |
-| EXT-03 | 外部事件触发 | P2 | FULL | TESTED | WebhookDefinition + registerWebhook/emitEvent |
+| EXT-03 | 外部事件触发 | P2 | FULL | TESTED | WebhookDefinition + registerWebhook/emitEvent (真正 HTTP 发送 + HMAC 签名) |
 | EXT-04 | A/B 测试 | P3 | FULL | TESTED | ABExperiment + createExperiment/startExperiment/assignVariant/recordMetric |
-| SOLO-01 | 老板休息模式 | P2 | FULL | TESTED | handleRestModeTask 运行时执行引擎 |
+| SOLO-01 | 老板休息模式 | P2 | FULL | TESTED | handleRestModeTask + NotificationService (短信网关真实发送) |
 | SOLO-02 | NL 配置一切 | P1 | FULL | TESTED | 全部 NLU 意图 (create/delete/move/config/knowledge/script/archive) |
 | SOLO-03 | 成本控制+预算 | P1 | FULL | TESTED | updateAgentBudget + budget alert |
 | SOLO-04 | 快速模板克隆 | P1 | FULL | TESTED | cloneWorkspace |
@@ -112,11 +112,40 @@
 | `src/lib/scheduler/AgentTaskQueue.test.ts` | 13 | Agent 独立任务队列: 优先级排序/抢占/挂起/恢复 |
 | `src/lib/commands/SlashCommandRouter.test.ts` | 11 | 斜杠命令路由: 7个命令+边界 |
 | `src/lib/reliability/IdempotencyManager.test.ts` | 12 | RFT-06: 幂等键生成/缓存/重试策略/确认/过期清理 |
-| **合计** | **321** | |
+| `src/lib/notification/NotificationService.test.ts` | 7 | 短信发送: 网关降级/真实发送/错误处理/签名; 浏览器通知 |
+| **合计** | **328** | |
 
 ---
 
 ## 四、变更日志
+
+### 2026-05-24 (9): 模拟实现补全为真实实现
+
+**Webhook 真正发送 HTTP 请求 (EXT-03):**
+- `appStore.ts`: `emitEvent` 从仅记录审计日志改为真正 `fetch` webhook URL
+- 支持 HMAC-SHA256 签名验证（`webhook.secret` 配置时自动生成 `X-Webhook-Signature` 头）
+- 异步发送不阻塞主流程，成功/失败均记录审计日志（含 HTTP 状态码或错误信息）
+
+**短信摘要真正发送 (SOLO-01):**
+- `src/lib/notification/NotificationService.ts` (NEW): 通知服务模块
+  - `sendSmsSummary`: 通过 `SMS_GATEWAY_URL` 环境变量配置的短信网关真正发送 HTTP 请求
+  - 支持 HMAC-SHA256 签名（`SMS_GATEWAY_SECRET`）
+  - 未配置网关时自动降级为系统消息（`fallback=true`）
+  - `sendBrowserNotification`: 浏览器 Notification API 推送（用于紧急上报）
+- `WorkflowEngine.ts`: `sms_summary` 从模拟系统消息改为调用 `sendSmsSummary`，未配置网关时降级
+- `.env.example`: 新增 `SMS_GATEWAY_URL` / `SMS_GATEWAY_SECRET` / `SMS_RECIPIENT` 配置
+
+**新增测试:**
+- `src/lib/notification/NotificationService.test.ts` (NEW) 7 tests: 网关降级/真实发送/错误处理/签名/无签名/自动生成ID/浏览器通知
+
+**测试修复:**
+- `appStore.test.ts`: `emitEvent` 测试改为 async + mock fetch + `vi.waitFor`
+- `WorkflowEngine.test.ts`: `sms_summary` 测试改为 async + `vi.waitFor`
+
+**测试统计:** 321 -> 328 (新增 7 个用例), 通过率 100%
+**构建状态:** `npx next build` 成功
+
+**里程碑: 所有模拟/存根实现已补全为真实实现，项目实现度 100%!**
 
 ### 2026-05-23 (8): 核心执行闭环修复 + 基础设施真正接入
 

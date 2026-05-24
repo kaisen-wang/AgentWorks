@@ -988,16 +988,44 @@ export const useAppStore = create<AppState>()(
       source: "agentworks",
     };
 
-    // 触发匹配的 Webhook
+    // 触发匹配的 Webhook，真正发送 HTTP 请求
     for (const webhook of state.webhooks) {
       if (webhook.enabled && webhook.events.includes(event)) {
-        // 模拟发送 Webhook（实际项目中会 fetch webhook.url）
-        // 添加审计日志
-        state.addAuditLog(
-          webhook.targetAgentId || "system",
-          "webhook_emit",
-          `Webhook ${webhook.name}: ${event}`
-        );
+        // 异步发送 Webhook HTTP 请求，不阻塞主流程
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        // 如果配置了签名密钥，生成 HMAC-SHA256 签名放在头部
+        if (webhook.secret) {
+          try {
+            const crypto = require("crypto");
+            const signature = crypto
+              .createHmac("sha256", webhook.secret)
+              .update(JSON.stringify(payload))
+              .digest("hex");
+            headers["X-Webhook-Signature"] = signature;
+          } catch {
+            // crypto 不可用时跳过签名
+          }
+        }
+
+        fetch(webhook.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        }).then((res) => {
+          state.addAuditLog(
+            webhook.targetAgentId || "system",
+            "webhook_emit",
+            `Webhook ${webhook.name}: ${event} -> ${res.status}`
+          );
+        }).catch((err) => {
+          state.addAuditLog(
+            webhook.targetAgentId || "system",
+            "webhook_emit_error",
+            `Webhook ${webhook.name}: ${event} -> ERROR: ${err instanceof Error ? err.message : String(err)}`
+          );
+        });
       }
     }
   },
