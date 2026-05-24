@@ -3,7 +3,7 @@ import { SupervisorAgent } from "./SupervisorAgent";
 import type { AgentConfig, AgentCapability } from "@/types";
 
 const defaultConfig: AgentConfig = {
-  model: "gpt-4",
+  model: "deepseek-v4-flash",
   temperature: 0.7,
   timeout: 5000,
   maxRetries: 3,
@@ -188,7 +188,7 @@ describe("SupervisorAgent - 主管 Agent", () => {
         output: "输出",
         cost: 0.05,
         apiCalls: 2,
-        model: "gpt-4",
+        model: "deepseek-v4-flash",
         duration: 3000,
       });
       expect(archiveId).toMatch(/^archive_s1_\d+$/);

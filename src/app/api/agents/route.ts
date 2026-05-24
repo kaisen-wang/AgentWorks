@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       createAgent({
         agentId: id,
         name,
-        model: config?.model || "gpt-4",
+        model: config?.model || "deepseek-v4-flash",
         parentId: parentId || null,
         path: "/",
         spanOfControlLimit: 5,

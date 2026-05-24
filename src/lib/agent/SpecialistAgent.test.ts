@@ -3,7 +3,7 @@ import { SpecialistAgent } from "./SpecialistAgent";
 import type { AgentConfig, AgentCapability } from "@/types";
 
 const defaultConfig: AgentConfig = {
-  model: "gpt-4",
+  model: "deepseek-v4-flash",
   temperature: 0.7,
   timeout: 5000,
   maxRetries: 3,
@@ -120,7 +120,7 @@ describe("SpecialistAgent - 专员 Agent", () => {
         output: "海报已生成",
         cost: 0.02,
         apiCalls: 1,
-        model: "gpt-4",
+        model: "deepseek-v4-flash",
         duration: 2000,
       });
       expect(archiveId).toMatch(/^archive_sp1_\d+$/);

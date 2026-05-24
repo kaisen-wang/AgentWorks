@@ -37,14 +37,14 @@ export default function HomePage() {
     const supervisor = state.createAgent(
       "营销主管", "supervisor", null,
       [{ name: "task_decomposition", description: "任务拆解与分配" }, { name: "quality_check", description: "质量检查" }],
-      { model: "gpt-4", decisionThreshold: 5, monthlyBudget: 20 }
+      { model: "deepseek-v4-flash", decisionThreshold: 5, monthlyBudget: 20 }
     );
     if ("error" in supervisor) return;
 
     const designer = state.createAgent(
       "图文本设计", "specialist", supervisor.id,
       [{ name: "design", description: "海报、文案、排版设计" }, { name: "image_generation", description: "DALL-E 图片生成", tools: ["dall-e"] }],
-      { model: "gpt-4", monthlyBudget: 10 }
+      { model: "deepseek-v4-flash", monthlyBudget: 10 }
     );
 
     const publisher = state.createAgent(

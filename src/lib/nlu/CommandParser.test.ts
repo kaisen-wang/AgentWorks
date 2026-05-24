@@ -18,7 +18,7 @@ describe("CommandParser - NLU 自然语言解析", () => {
       const result = parseNaturalLanguage("创建一名营销主管Agent，使用GPT-4");
       expect(result.intent).toBe("create_agent");
       expect(result.params.role).toBe("supervisor");
-      expect(result.params.model).toBe("gpt-4");
+      expect(result.params.model).toBe("deepseek-v4-flash");
     });
 
     it("解析'新建一个设计专员Agent'", () => {

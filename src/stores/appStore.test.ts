@@ -214,7 +214,7 @@ describe("appStore - 归档", () => {
       output: "计划已生成",
       cost: 0.5,
       apiCalls: 3,
-      model: "gpt-4",
+      model: "deepseek-v4-flash",
       duration: 2000,
       tags: ["发布", "营销"],
       createdAt: Date.now(),
@@ -517,7 +517,7 @@ describe("appStore - 归档补充", () => {
       output: "结果",
       cost: 0.1,
       apiCalls: 1,
-      model: "gpt-4",
+      model: "deepseek-v4-flash",
       duration: 1000,
       createdAt: Date.now(),
     });
@@ -535,7 +535,7 @@ describe("appStore - 归档补充", () => {
       output: "海报设计完成",
       cost: 0.1,
       apiCalls: 1,
-      model: "gpt-4",
+      model: "deepseek-v4-flash",
       duration: 1000,
       createdAt: Date.now(),
     });
@@ -554,7 +554,7 @@ describe("appStore - 归档补充", () => {
       tags: ["设计", "发布"],
       cost: 0.1,
       apiCalls: 1,
-      model: "gpt-4",
+      model: "deepseek-v4-flash",
       duration: 1000,
       createdAt: Date.now(),
     });
@@ -572,7 +572,7 @@ describe("appStore - 归档补充", () => {
       output: "结果",
       cost: 0.1,
       apiCalls: 1,
-      model: "gpt-4",
+      model: "deepseek-v4-flash",
       duration: 1000,
       createdAt: Date.now(),
     });
@@ -819,11 +819,11 @@ describe("appStore - KNL-04 归档筛选", () => {
   it("filterArchives 按 agentId 筛选", () => {
     useAppStore.getState().addArchive({
       taskId: "t1", taskTitle: "任务A", agentId: "a1", agentName: "专员1",
-      input: "", output: "结果1", cost: 1, apiCalls: 1, model: "gpt-4", duration: 100, createdAt: Date.now(),
+      input: "", output: "结果1", cost: 1, apiCalls: 1, model: "deepseek-v4-flash", duration: 100, createdAt: Date.now(),
     });
     useAppStore.getState().addArchive({
       taskId: "t2", taskTitle: "任务B", agentId: "a2", agentName: "专员2",
-      input: "", output: "结果2", cost: 2, apiCalls: 2, model: "gpt-4", duration: 200, createdAt: Date.now(),
+      input: "", output: "结果2", cost: 2, apiCalls: 2, model: "deepseek-v4-flash", duration: 200, createdAt: Date.now(),
     });
     // searchArchives 可以通过 agentName 间接筛选
     const results = useAppStore.getState().searchArchives("专员1");
@@ -836,11 +836,11 @@ describe("appStore - KNL-04 归档筛选", () => {
     const recentTime = Date.now();
     useAppStore.getState().addArchive({
       taskId: "t1", taskTitle: "旧任务", agentId: "a1", agentName: "专员",
-      input: "", output: "旧结果", cost: 1, apiCalls: 1, model: "gpt-4", duration: 100, createdAt: oldTime,
+      input: "", output: "旧结果", cost: 1, apiCalls: 1, model: "deepseek-v4-flash", duration: 100, createdAt: oldTime,
     });
     useAppStore.getState().addArchive({
       taskId: "t2", taskTitle: "新任务", agentId: "a1", agentName: "专员",
-      input: "", output: "新结果", cost: 2, apiCalls: 2, model: "gpt-4", duration: 200, createdAt: recentTime,
+      input: "", output: "新结果", cost: 2, apiCalls: 2, model: "deepseek-v4-flash", duration: 200, createdAt: recentTime,
     });
     const all = useAppStore.getState().archives;
     expect(all).toHaveLength(2);
@@ -857,7 +857,7 @@ describe("appStore - KNL-04 归档导出", () => {
   it("archives 可序列化为 JSON", () => {
     useAppStore.getState().addArchive({
       taskId: "t1", taskTitle: "任务A", agentId: "a1", agentName: "专员",
-      input: "输入", output: "输出", cost: 0.01, apiCalls: 1, model: "gpt-4", duration: 100, createdAt: Date.now(),
+      input: "输入", output: "输出", cost: 0.01, apiCalls: 1, model: "deepseek-v4-flash", duration: 100, createdAt: Date.now(),
     });
     const archives = useAppStore.getState().archives;
     const json = JSON.stringify(archives);
@@ -1091,11 +1091,11 @@ describe("appStore - KNL-03 归档 NLU 检索", () => {
   it("searchArchives 支持关键词检索", () => {
     useAppStore.getState().addArchive({
       taskId: "t1", taskTitle: "设计海报", agentId: "a1", agentName: "设计专员",
-      input: "", output: "结果", cost: 1, apiCalls: 1, model: "gpt-4", duration: 100, createdAt: Date.now(),
+      input: "", output: "结果", cost: 1, apiCalls: 1, model: "deepseek-v4-flash", duration: 100, createdAt: Date.now(),
     });
     useAppStore.getState().addArchive({
       taskId: "t2", taskTitle: "发布文章", agentId: "a2", agentName: "发布专员",
-      input: "", output: "结果", cost: 2, apiCalls: 2, model: "gpt-4", duration: 200, createdAt: Date.now(),
+      input: "", output: "结果", cost: 2, apiCalls: 2, model: "deepseek-v4-flash", duration: 200, createdAt: Date.now(),
     });
     const results = useAppStore.getState().searchArchives("设计");
     expect(results).toHaveLength(1);
@@ -1105,7 +1105,7 @@ describe("appStore - KNL-03 归档 NLU 检索", () => {
   it("searchArchives 空查询返回全部", () => {
     useAppStore.getState().addArchive({
       taskId: "t1", taskTitle: "任务A", agentId: "a1", agentName: "专员",
-      input: "", output: "结果", cost: 1, apiCalls: 1, model: "gpt-4", duration: 100, createdAt: Date.now(),
+      input: "", output: "结果", cost: 1, apiCalls: 1, model: "deepseek-v4-flash", duration: 100, createdAt: Date.now(),
     });
     const results = useAppStore.getState().searchArchives("");
     expect(results).toHaveLength(1);
@@ -1215,7 +1215,7 @@ describe("appStore - EXT-04 A/B 测试", () => {
       "模型对比实验",
       "对比 GPT-4 和 Claude 的任务完成率",
       [
-        { id: "control", name: "GPT-4", agentConfig: { model: "gpt-4" }, trafficWeight: 0.5 },
+        { id: "control", name: "GPT-4", agentConfig: { model: "deepseek-v4-flash" }, trafficWeight: 0.5 },
         { id: "treatment", name: "Claude", agentConfig: { model: "claude-3" }, trafficWeight: 0.5 },
       ]
     );
@@ -1246,7 +1246,7 @@ describe("appStore - EXT-04 A/B 测试", () => {
 
   it("assignVariant 按流量权重分配变体", () => {
     const exp = useAppStore.getState().createExperiment("实验", "描述", [
-      { id: "control", name: "对照组", agentConfig: { model: "gpt-4" }, trafficWeight: 0.5 },
+      { id: "control", name: "对照组", agentConfig: { model: "deepseek-v4-flash" }, trafficWeight: 0.5 },
       { id: "treatment", name: "实验组", agentConfig: { model: "claude-3" }, trafficWeight: 0.5 },
     ]);
     useAppStore.getState().startExperiment(exp.id);

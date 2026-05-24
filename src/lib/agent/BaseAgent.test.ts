@@ -22,7 +22,7 @@ class TestAgent extends BaseAgent {
 }
 
 const defaultConfig: AgentConfig = {
-  model: "gpt-4",
+  model: "deepseek-v4-flash",
   temperature: 0.7,
   timeout: 5000,
   maxRetries: 2,
@@ -159,7 +159,7 @@ describe("BaseAgent - 四动作基类", () => {
         output: "任务输出",
         cost: 0.01,
         apiCalls: 1,
-        model: "gpt-4",
+        model: "deepseek-v4-flash",
         duration: 1000,
       };
       const archiveId = await agent.archive(input);
@@ -177,7 +177,7 @@ describe("BaseAgent - 四动作基类", () => {
         output: "",
         cost: 0,
         apiCalls: 0,
-        model: "gpt-4",
+        model: "deepseek-v4-flash",
         duration: 0,
       };
       await agent.archive(input);

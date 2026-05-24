@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
                   updated_at=?
                 WHERE agent_id=?
               `).run(
-                a.name, (a.config as Record<string, unknown>)?.model || "gpt-4", a.parentId,
+                a.name, (a.config as Record<string, unknown>)?.model || "deepseek-v4-flash", a.parentId,
                 a.maxChildren || 5, a.spanExemption ? 1 : 0, a.spanExemptionReason || null,
                 JSON.stringify(a.capabilities || []),
                 (a.config as Record<string, unknown>)?.monthlyBudget || null,
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
                   capability_tags, monthly_budget, status, avatar_url, config, created_at, updated_at)
                 VALUES (?, ?, ?, ?, '/', ?, ?, ?, ?, ?, ?, ?, ?)
               `).run(
-                id, a.name, (a.config as Record<string, unknown>)?.model || "gpt-4", a.parentId,
+                id, a.name, (a.config as Record<string, unknown>)?.model || "deepseek-v4-flash", a.parentId,
                 a.maxChildren || 5, JSON.stringify(a.capabilities || []),
                 (a.config as Record<string, unknown>)?.monthlyBudget || null,
                 a.status || "idle", a.avatar || "bot",
