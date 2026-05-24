@@ -6,15 +6,21 @@ import type { AppState } from "@/stores/appStore";
 import { OrgSidebar } from "@/components/org/OrgSidebar";
 import { OrgChartView } from "@/components/org/OrgChartView";
 import { ChatWindow } from "@/components/chat/ChatWindow";
+import { ChatInput } from "@/components/chat/ChatInput";
 import { KnowledgePanel } from "@/components/common/KnowledgePanel";
 import { CostPanel } from "@/components/common/CostPanel";
 import { ScriptPanel } from "@/components/common/ScriptPanel";
 import { RestModePanel } from "@/components/common/RestModePanel";
+import { CreateAgentPanel } from "@/components/common/CreateAgentPanel";
 
 export default function HomePage() {
   const activeChatId = useAppStore((s: AppState) => s.activeChatId);
   const restMode = useAppStore((s: AppState) => s.restMode);
   const agents = useAppStore((s: AppState) => s.agents);
+  const showCreateAgentPanel = useAppStore((s: AppState) => s.showCreateAgentPanel);
+  const createAgentInitialName = useAppStore((s: AppState) => s.createAgentInitialName);
+  const closeCreateAgentPanel = useAppStore((s: AppState) => s.closeCreateAgentPanel);
+  const openCreateAgentPanel = useAppStore((s: AppState) => s.openCreateAgentPanel);
 
   const [showOrgChart, setShowOrgChart] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
@@ -153,50 +159,45 @@ export default function HomePage() {
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden relative z-10">
         {/* Left sidebar — glass */}
-        <aside className="w-[260px] glass-surface overflow-hidden flex-shrink-0">
+        <aside className="w-[260px] glass-surface overflow-hidden flex-shrink-0 border-r border-[var(--border)]">
           <OrgSidebar />
         </aside>
 
         {/* Right — Chat or empty state */}
-        <main className="flex-1 overflow-hidden relative">
-          {activeChatId ? (
-            <ChatWindow chatId={activeChatId} />
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center space-y-5 max-w-[300px] animate-fade-in">
-                {/* Hero with glass card */}
-                <div className="relative inline-block">
-                  <div className="absolute inset-0 bg-[var(--accent)] opacity-15 blur-[40px] rounded-full scale-150" />
-                  <div className="relative w-20 h-20 rounded-2xl glass-medium flex items-center justify-center mx-auto shimmer glass-reflect">
-                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                      <path d="M16 4L28 10.5V21.5L16 28L4 21.5V10.5L16 4Z" stroke="var(--accent)" strokeWidth="1.5" fill="none" opacity="0.5"/>
-                      <circle cx="16" cy="16" r="5" fill="var(--accent)" opacity="0.2"/>
-                      <circle cx="16" cy="16" r="2" fill="var(--accent)"/>
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <h2 className="text-[17px] font-semibold font-heading text-[var(--text-primary)] tracking-tight">
-                    AgentWorks
-                  </h2>
-                  <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-                    一人公司 AI Agent 工作集<br />
-                    用聊天的方式管理你的虚拟团队
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  <button onClick={initializeDemo} className="btn-cta w-full justify-center py-3">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 2V8L11 11"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-                    </svg>
-                    加载演示场景
-                  </button>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    或输入 <code className="text-[var(--accent)] font-mono bg-[var(--accent-muted)] px-1.5 py-0.5 rounded">/new_agent</code> 创建 Agent
-                  </p>
-                </div>
+        <main className="flex-1 flex flex-col overflow-hidden relative">
+          <div className="flex-1 overflow-hidden">
+            {activeChatId && <ChatWindow chatId={activeChatId} />}
+          </div>
+          {!activeChatId && (
+            <div className="px-4 py-3 glass-surface glass-reflect flex-shrink-0">
+              <div className="flex items-center gap-1 mb-2">
+                <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="斜杠命令" onClick={() => openCreateAgentPanel()}>
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M8 3V13M3 8H13"/></svg>
+                </button>
+                <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="加载演示" onClick={initializeDemo}>
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M7.5 2V7.5L10 10"/><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.3" fill="none"/></svg>
+                </button>
+              </div>
+              <div className="flex items-end gap-2">
+                <textarea
+                  placeholder="输入消息或 / 命令开始..."
+                  rows={2}
+                  className="flex-1 resize-y bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-xl px-3.5 py-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] transition-all leading-relaxed min-h-[68px] max-h-[200px] overflow-y-auto"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      const val = (e.target as HTMLTextAreaElement).value.trim();
+                      if (val.startsWith("/")) { openCreateAgentPanel(); }
+                      (e.target as HTMLTextAreaElement).value = "";
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => openCreateAgentPanel()}
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all bg-[var(--cta)] text-white hover:bg-[var(--cta-hover)] hover:shadow-[0_0_16px_var(--cta-glow)] active:scale-95"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8L13 3L8 13L7 8.5L3 8Z" fill="currentColor"/></svg>
+                </button>
               </div>
             </div>
           )}
@@ -209,6 +210,7 @@ export default function HomePage() {
       {showCost && <CostPanel onClose={() => setShowCost(false)} />}
       {showScript && <ScriptPanel onClose={() => setShowScript(false)} />}
       {showRestMode && <RestModePanel onClose={() => setShowRestMode(false)} />}
+      {showCreateAgentPanel && <CreateAgentPanel onClose={closeCreateAgentPanel} initialName={createAgentInitialName} />}
     </div>
   );
 }

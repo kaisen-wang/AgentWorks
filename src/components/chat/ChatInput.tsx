@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { workflowEngine } from "@/lib/workflow";
@@ -14,7 +14,15 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const onUp = () => setIsDragging(false);
+    window.addEventListener("mouseup", onUp);
+    return () => window.removeEventListener("mouseup", onUp);
+  }, [isDragging]);
 
   const agents = useAppStore((s: AppState) => s.agents);
   const sendMessage = useAppStore((s: AppState) => s.sendMessage);
@@ -74,24 +82,8 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
 
     switch (intent) {
       case "create_agent": {
-        const name = (params.name as string) || "新 Agent";
-        const role = (params.role as AgentRole) || "specialist";
-        const capabilities = (params.capabilities as AgentCapability[]) || [];
-        const config: Record<string, unknown> = {};
-        if (params.model) config.model = params.model;
-        if (params.monthlyBudget) config.monthlyBudget = params.monthlyBudget;
-        const agentResult = createAgent(name, role, null, capabilities, config);
-        if ("error" in agentResult) {
-          sendMessage(chatId, "system", "system", agentResult.error);
-        } else {
-          const capStr = capabilities.length > 0 ? `，能力: ${capabilities.map((c) => c.name).join("、")}` : "";
-          sendMessage(chatId, "system", "system", `已创建${role === "supervisor" ? "主管" : "专员"} Agent「${agentResult.name}」${params.model ? `，模型 ${params.model}` : ""}${capStr}`);
-          const chat = createChat("direct", agentResult.name, [
-            { id: "user", name: "你", avatar: "user", role: "owner" },
-            { id: agentResult.id, name: agentResult.name, avatar: agentResult.avatar, role: "member" },
-          ]);
-          store.setActiveChat(chat.id);
-        }
+        // 弹出结构化创建面板
+        useAppStore.getState().openCreateAgentPanel((params.name as string) || "");
         break;
       }
       case "set_threshold": {
@@ -277,22 +269,14 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     // UI-05: 使用 SlashCommandRouter 统一处理所有斜杠命令
     const parsed = parseSlashCommand(cmd);
     if (parsed && parsed.type !== "unknown") {
+      // /new_agent 弹出结构化创建面板
+      if (parsed.type === "new_agent") {
+        const store = useAppStore.getState();
+        store.openCreateAgentPanel(parsed.args || "");
+        return;
+      }
       const result = await executeCommand(parsed, chatId);
       sendMessage(chatId, "system", "system", result.message);
-      // 处理 new_agent 的额外逻辑：自动创建 direct 聊天
-      if (parsed.type === "new_agent" && result.success && result.data) {
-        const data = result.data as { agentId?: string };
-        if (data.agentId) {
-          const agent = useAppStore.getState().agents[data.agentId];
-          if (agent) {
-            const chat = createChat("direct", agent.name, [
-              { id: "user", name: "你", avatar: "user", role: "owner" },
-              { id: agent.id, name: agent.name, avatar: agent.avatar, role: "member" },
-            ]);
-            useAppStore.getState().setActiveChat(chat.id);
-          }
-        }
-      }
       // 处理 invite 的额外逻辑：添加成员到聊天
       if (parsed.type === "invite" && result.success && result.data) {
         const data = result.data as { collaboratorName?: string };
@@ -349,24 +333,52 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
         </div>
       )}
 
-      {/* Input bar — glass surface */}
-      <div className="flex items-end gap-2 px-4 py-3 glass-surface glass-reflect">
-        {/* UI-04: 回复提示 */}
+      {/* Input bar — enterprise chat style */}
+      <div className="px-4 py-3 glass-surface glass-reflect">
+        {/* Reply indicator */}
         {replyToId && (
-          <div className="flex items-center gap-1 text-[10px] text-[var(--accent)] bg-[var(--accent-muted)] px-2 py-1 rounded-lg flex-shrink-0">
+          <div className="flex items-center gap-1 text-[10px] text-[var(--accent)] bg-[var(--accent-muted)] px-2 py-1 rounded-lg mb-2 w-fit">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M1 5L5 1L9 5"/><path d="M5 1V9"/></svg>
             回复中
           </div>
         )}
-        <div className="flex-1 relative">
-          <input ref={inputRef} value={input} onChange={(e) => handleInputChange(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-            placeholder="输入消息...  / 命令  @ 提及" className="input-base pr-10" />
-          {input.startsWith("/") && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--text-faint)]">↵ 执行</div>}
+        {/* Toolbar row */}
+        <div className="flex items-center gap-1 mb-2">
+          <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="斜杠命令" onClick={() => { setInput("/"); setShowSlashMenu(true); inputRef.current?.focus(); }}>
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M4 2L11 13"/><circle cx="3.5" cy="4" r="1.5"/><circle cx="11.5" cy="11" r="1.5"/></svg>
+          </button>
+          <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="@ 提及" onClick={() => { setInput(prev => prev + "@"); setMentionFilter(""); setShowMentionMenu(true); inputRef.current?.focus(); }}>
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="7.5" cy="7.5" r="5.5"/><path d="M7.5 2V3M7.5 12V13M2 7.5H3M12 7.5H13"/></svg>
+          </button>
+          <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="附件">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M4 8V4.5C4 2.5 5.5 1 7.5 1S11 2.5 11 4.5V9C11 10.1 10.1 11 9 11S7 10.1 7 9V4.5C7 3.7 7.7 3 8.5 3S10 3.7 10 4.5V9"/></svg>
+          </button>
+          <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="表情">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="7.5" cy="7.5" r="6"/><path d="M5 9C5.5 10 6.5 10.5 7.5 10.5S9.5 10 10 9"/><circle cx="5.5" cy="6" r="0.8" fill="currentColor"/><circle cx="9.5" cy="6" r="0.8" fill="currentColor"/></svg>
+          </button>
+          <div className="flex-1" />
+          {input.startsWith("/") && <span className="text-[10px] text-[var(--text-faint)]">↵ 执行命令</span>}
         </div>
-        <button onClick={handleSubmit} disabled={!input.trim()} className="btn-cta px-3.5 py-2.5 rounded-xl">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7L12 2L7 12L6 7.5L2 7Z" fill="currentColor"/></svg>
-        </button>
+        {/* Textarea + Send */}
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => { handleInputChange(e.target.value); if (!isDragging) { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px"; } }}
+            onMouseDown={(e) => { const rect = e.currentTarget.getBoundingClientRect(); if (rect.bottom - e.clientY < 6) { setIsDragging(true); e.preventDefault(); }}}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+            placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+            rows={2}
+            className="flex-1 resize-y bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-xl px-3.5 py-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] transition-all leading-relaxed min-h-[68px] max-h-[200px] overflow-y-auto cursor-n-resize"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={!input.trim()}
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--cta)] text-white hover:bg-[var(--cta-hover)] hover:shadow-[0_0_16px_var(--cta-glow)] active:scale-95"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8L13 3L8 13L7 8.5L3 8Z" fill="currentColor"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -31,7 +31,7 @@ export function OrgSidebar() {
       </div>
 
       {/* Agent Tree */}
-      <div className="flex-1 overflow-y-auto py-1 min-h-0">
+      <div className="flex-1 overflow-y-auto py-2 px-1 min-h-0">
         {rootAgents.length === 0 ? (
           <div className="px-4 py-10 text-center">
             <div className="w-9 h-9 rounded-xl glass flex items-center justify-center mx-auto mb-2.5 glass-reflect">
@@ -54,7 +54,7 @@ export function OrgSidebar() {
       </div>
 
       {/* Chats section */}
-      <div className="border-t border-[var(--border)] flex flex-col min-h-[120px] max-h-[45%]">
+      <div className="border-t border-[var(--border)] flex flex-col min-h-[100px] max-h-[45%]">
         <div className="px-4 py-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-[10px] font-semibold font-heading uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -65,7 +65,7 @@ export function OrgSidebar() {
             )}
           </div>
         </div>
-        <div className="overflow-y-auto flex-1 pb-1">
+        <div className="overflow-y-auto flex-1 pb-3 px-1">
           {chatList.length === 0 ? (
             <div className="px-4 py-4 text-center text-[11px] text-[var(--text-muted)]">暂无会话</div>
           ) : (
@@ -76,7 +76,7 @@ export function OrgSidebar() {
                   <button
                     key={chat.id}
                     onClick={() => setActiveChat(chat.id)}
-                    className={`w-full px-3 py-2.5 mx-1.5 text-left flex items-center gap-2.5 rounded-xl transition-all duration-[150ms] ${
+                    className={`w-full px-3 py-2.5 text-left flex items-center gap-2.5 rounded-xl transition-all duration-[150ms] ${
                       isActive
                         ? "glass-medium border border-[var(--accent)] border-opacity-40"
                         : "border border-transparent hover:bg-[var(--bg-hover)]"
@@ -120,7 +120,7 @@ function AgentTreeNode({ agent, allAgents, depth }: { agent: Agent; allAgents: R
   return (
     <div>
       <div
-        className="group px-3 py-[7px] mx-1.5 flex items-center gap-2 rounded-xl hover:bg-[var(--bg-hover)] transition-all duration-[120ms] cursor-pointer"
+        className="group px-3 py-[7px] flex items-center gap-2 rounded-xl hover:bg-[var(--bg-hover)] transition-all duration-[120ms] cursor-pointer"
         style={{ paddingLeft: `${12 + depth * 14}px` }}
       >
         <span className={`status-dot status-${agent.status}`} />

@@ -21,7 +21,9 @@ export function CostPanel({ onClose }: { onClose: () => void }) {
 
   const agentCosts = Object.values(agents).map((agent) => {
     const aa = filteredArchives.filter((a) => a.agentId === agent.id);
-    return { id: agent.id, name: agent.name, avatar: agent.avatar, budgetUsed: agent.config.budgetUsed, budgetTotal: agent.config.monthlyBudget, archiveCost: aa.reduce((s, a) => s + a.cost, 0), apiCalls: aa.reduce((s, a) => s + a.apiCalls, 0), usagePercent: agent.config.monthlyBudget > 0 ? (agent.config.budgetUsed / agent.config.monthlyBudget) * 100 : 0 };
+    const budgetUsed = agent.config.budgetUsed ?? 0;
+    const budgetTotal = agent.config.monthlyBudget ?? 0;
+    return { id: agent.id, name: agent.name, avatar: agent.avatar, budgetUsed, budgetTotal, archiveCost: aa.reduce((s, a) => s + a.cost, 0), apiCalls: aa.reduce((s, a) => s + a.apiCalls, 0), usagePercent: budgetTotal > 0 ? (budgetUsed / budgetTotal) * 100 : 0 };
   });
   const totalCost = agentCosts.reduce((s, a) => s + a.archiveCost, 0);
   const totalBudget = agentCosts.reduce((s, a) => s + a.budgetTotal, 0);
