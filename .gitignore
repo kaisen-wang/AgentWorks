@@ -3,5 +3,8 @@ node_modules/
 .codeartsdoer/
 .next/
 .vscode/
+data/
 
 .env.local
+tsconfig.tsbuildinfo
+next-env.d.ts

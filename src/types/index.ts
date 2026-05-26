@@ -26,7 +26,7 @@ export interface AgentConfig {
   timeout: number;         // 动作超时时间（毫秒），默认 30000
   maxRetries: number;      // 最大重试次数，默认 3
   decisionThreshold: number; // 决策阈值（元），低于此值自动批准
-  monthlyBudget: number;   // 月度预算（美元）
+  monthlyBudget: number;   // 月度预算（人民币）
   budgetUsed: number;      // 已用预算
   budgetAlertThreshold: number; // 预算告警阈值（百分比），默认 0.9
   reportFrequency?: "on_completion" | "daily" | "weekly"; // BUP-03: 上报频率，默认 on_completion
@@ -252,7 +252,7 @@ export interface ArchiveRecord {
   input: string;           // 任务输入
   output: string;          // 任务输出
   intermediateSteps?: string[]; // 中间状态
-  cost: number;            // 费用（美元）
+  cost: number;            // 费用（人民币）
   apiCalls: number;        // API 调用次数
   model: string;           // 使用的模型
   duration: number;        // 耗时（毫秒）

@@ -49,6 +49,8 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     { cmd: "/help", desc: "显示帮助", icon: <IconHelp size={13} /> },
   ];
 
+  const noAgents = agentList.length === 0;
+
   const handleSubmit = () => {
     const text = input.trim();
     if (!text) return;
@@ -57,7 +59,28 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     // NLU 自然语言解析（ORG-01, SOLO-02, KNL-02）
     const nluResult = parseNaturalLanguage(text);
     if (nluResult.confidence >= 0.7 && nluResult.intent !== "unknown") {
+      // create_agent 意图正常处理
+      if (nluResult.intent === "create_agent") {
+        handleNLUIntent(nluResult);
+        setInput("");
+        return;
+      }
+      // 无 Agent 时，非创建意图提示先创建 Agent
+      if (noAgents) {
+        sendMessage(chatId, "system", "system", "当前没有任何 Agent，请先创建一个 Agent 再操作。输入 /new_agent 或点击下方按钮创建。");
+        useAppStore.getState().openCreateAgentPanel();
+        setInput("");
+        return;
+      }
       handleNLUIntent(nluResult);
+      setInput("");
+      return;
+    }
+
+    // 无 Agent 时，普通消息提示先创建 Agent
+    if (noAgents) {
+      sendMessage(chatId, "system", "system", "当前没有任何 Agent，请先创建一个 Agent 再发送消息。输入 /new_agent 或点击下方按钮创建。");
+      useAppStore.getState().openCreateAgentPanel();
       setInput("");
       return;
     }
@@ -367,9 +390,9 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
             onChange={(e) => { handleInputChange(e.target.value); if (!isDragging) { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px"; } }}
             onMouseDown={(e) => { const rect = e.currentTarget.getBoundingClientRect(); if (rect.bottom - e.clientY < 6) { setIsDragging(true); e.preventDefault(); }}}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+            placeholder={noAgents ? "暂无 Agent，输入 /new_agent 创建" : "输入消息，Enter 发送，Shift+Enter 换行"}
             rows={2}
-            className="flex-1 resize-y bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-xl px-3.5 py-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] transition-all leading-relaxed min-h-[68px] max-h-[200px] overflow-y-auto cursor-n-resize"
+            className="flex-1 resize-y bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-xl px-5 py-4 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] transition-all leading-relaxed min-h-[68px] max-h-[200px] overflow-y-auto cursor-n-resize"
           />
           <button
             onClick={handleSubmit}

@@ -170,12 +170,12 @@ function BudgetAlertView({ alert, chatId, messageId, onResolve }: { alert: Budge
     <div className="space-y-3 min-w-[220px]">
       <div className="flex items-center gap-2">
         <div className={`w-4 h-4 rounded flex items-center justify-center ${isCritical ? "bg-[var(--danger-muted)]" : "bg-[var(--warning-muted)]"}`}>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={isCritical ? "var(--danger)" : "var(--warning)"} strokeWidth="1.2"><circle cx="5" cy="5" r="3.5"/><text x="5" y="6.5" textAnchor="middle" fontSize="5" fill={isCritical ? "var(--danger)" : "var(--warning)"}>$</text></svg>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={isCritical ? "var(--danger)" : "var(--warning)"} strokeWidth="1.2"><circle cx="5" cy="5" r="3.5"/><text x="5" y="6.5" textAnchor="middle" fontSize="5" fill={isCritical ? "var(--danger)" : "var(--warning)"}>¥</text></svg>
         </div>
         <span className={`text-[12px] font-semibold font-heading ${isCritical ? "text-[var(--danger)]" : "text-[var(--warning)]"}`}>预算告警</span>
         {resolved && <span className="text-[9px] font-medium text-[var(--cta)] bg-[var(--cta-muted)] px-1.5 py-[2px] rounded-md">已处理</span>}
       </div>
-      <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">{alert.agentName} 本月已用 {pct}%（${alert.budgetUsed.toFixed(2)} / ${alert.budgetTotal.toFixed(2)}）</p>
+      <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">{alert.agentName} 本月已用 {pct}%（¥{alert.budgetUsed.toFixed(2)} / ¥{alert.budgetTotal.toFixed(2)}）</p>
       <div className="progress-track"><div className={`progress-fill ${isCritical ? "progress-danger" : "progress-warning"}`} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
       <div className="flex flex-wrap gap-1.5 pt-0.5">{alert.options.map((opt) => <button key={opt.id} onClick={() => !resolved && onResolve(chatId, messageId, opt.id)} disabled={resolved} className={`btn-decision ${opt.selected ? "selected" : ""}`}>{opt.label}</button>)}</div>
     </div>

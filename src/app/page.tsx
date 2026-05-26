@@ -180,7 +180,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-end gap-2">
                 <textarea
-                  placeholder="输入消息或 / 命令开始..."
+                  placeholder={agentCount === 0 ? "暂无 Agent，输入 /new_agent 创建" : "输入消息或 / 命令开始..."}
                   rows={2}
                   className="flex-1 resize-y bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-xl px-3.5 py-3 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] transition-all leading-relaxed min-h-[68px] max-h-[200px] overflow-y-auto"
                   onKeyDown={(e) => {
@@ -188,6 +188,7 @@ export default function HomePage() {
                       e.preventDefault();
                       const val = (e.target as HTMLTextAreaElement).value.trim();
                       if (val.startsWith("/")) { openCreateAgentPanel(); }
+                      else if (agentCount === 0) { openCreateAgentPanel(); }
                       (e.target as HTMLTextAreaElement).value = "";
                     }
                   }}

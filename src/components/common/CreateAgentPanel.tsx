@@ -180,7 +180,7 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
 
         {/* Monthly Budget */}
         <div className="space-y-2">
-          <label className="text-[12px] font-medium text-[var(--text-secondary)]">月度预算 (USD)</label>
+          <label className="text-[12px] font-medium text-[var(--text-secondary)]">月度预算 (CNY)</label>
           <input
             type="number"
             value={monthlyBudget}

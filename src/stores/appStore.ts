@@ -900,7 +900,7 @@ export const useAppStore = create<AppState>()(
         budgetTotal: agent.config.monthlyBudget,
         usagePercent,
         options: [
-          { id: "increase", label: `增加额度至 $${agent.config.monthlyBudget * 1.5}` },
+          { id: "increase", label: `增加额度至 ¥${agent.config.monthlyBudget * 1.5}` },
           { id: "downgrade", label: "切换至低精度模型" },
           { id: "auto_downgrade", label: "超额后自动降级" },
         ],

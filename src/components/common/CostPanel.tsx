@@ -74,11 +74,11 @@ export function CostPanel({ onClose }: { onClose: () => void }) {
                         <div className="w-5 h-5 rounded-md glass flex items-center justify-center glass-reflect">{renderAvatarIcon(ac.avatar, 10)}</div>
                         <span className="text-[12px] font-heading text-[var(--text-primary)] font-medium">{ac.name}</span>
                       </div>
-                      <span className="text-[12px] text-[var(--text-primary)] tabular-nums font-semibold">${ac.archiveCost.toFixed(2)}</span>
+                      <span className="text-[12px] text-[var(--text-primary)] tabular-nums font-semibold">¥{ac.archiveCost.toFixed(2)}</span>
                     </div>
                     <div className="progress-track"><div className={`progress-fill progress-${barColor}`} style={{ width: `${Math.min(ac.usagePercent, 100)}%` }} /></div>
                     <div className="flex justify-between text-[10px] text-[var(--text-muted)] tabular-nums">
-                      <span>${ac.budgetUsed.toFixed(2)} / ${ac.budgetTotal.toFixed(2)}</span>
+                      <span>¥{ac.budgetUsed.toFixed(2)} / ¥{ac.budgetTotal.toFixed(2)}</span>
                       <span>{ac.apiCalls} 次调用</span>
                     </div>
                   </div>
