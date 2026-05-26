@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
               );
             } else {
               db.prepare(`
-                INSERT INTO agents (agent_id, name, model, parent_id, path, span_of_control_limit,
+                INSERT OR IGNORE INTO agents (agent_id, name, model, parent_id, path, span_of_control_limit,
                   capability_tags, monthly_budget, status, avatar_url, config, created_at, updated_at)
                 VALUES (?, ?, ?, ?, '/', ?, ?, ?, ?, ?, ?, ?, ?)
               `).run(
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
             const existing = db.prepare("SELECT task_id FROM tasks WHERE task_id = ?").get(id);
             if (!existing) {
               db.prepare(`
-                INSERT INTO tasks (task_id, title, description, assignee_id, parent_task_id,
+                INSERT OR IGNORE INTO tasks (task_id, title, description, assignee_id, parent_task_id,
                   project_id, priority, status, chat_id, created_at, updated_at)
                 VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
               `).run(

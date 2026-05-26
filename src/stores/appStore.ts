@@ -141,6 +141,12 @@ export interface AppState {
 
   // --- 任务转移 (ORG-04) ---
   transferTasks: (fromAgentId: AgentId, toAgentId: AgentId) => number;
+
+  // --- UI 状态 ---
+  showCreateAgentPanel: boolean;
+  createAgentInitialName: string;
+  openCreateAgentPanel: (initialName?: string) => void;
+  closeCreateAgentPanel: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -1028,6 +1034,14 @@ export const useAppStore = create<AppState>()(
 
     return count;
   },
+
+  // ============================================================
+  // UI 状态
+  // ============================================================
+  showCreateAgentPanel: false,
+  createAgentInitialName: "",
+  openCreateAgentPanel: (initialName = "") => set({ showCreateAgentPanel: true, createAgentInitialName: initialName }),
+  closeCreateAgentPanel: () => set({ showCreateAgentPanel: false, createAgentInitialName: "" }),
 
   // ============================================================
   // 插件市场 (EXT-02)

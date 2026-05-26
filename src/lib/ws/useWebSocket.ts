@@ -12,7 +12,7 @@ import { useAppStore } from "@/stores/appStore";
 import { ChatWebSocket, onPushEvent, emitPushEvent } from "./ChatWebSocket";
 import type { WSConnectionState, PushEvent } from "./ChatWebSocket";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || (process.env.NODE_ENV === "development" ? "ws://localhost:3001" : "");
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "";
 
 /**
  * useWebSocket - WebSocket 连接管理 Hook
@@ -68,8 +68,12 @@ export function useWebSocket() {
       onStateChange: (state) => {
         setConnectionState(state);
       },
-      onError: (error) => {
-        console.error("[WS] 连接错误:", error);
+      onError: () => {
+        // WebSocket 连接失败时静默处理，重连机制会自动重试
+        // 仅在首次连接失败时提示
+        if (connectionState === "connecting") {
+          console.warn("[WS] WebSocket 服务不可用，已降级为本地模式。配置 NEXT_PUBLIC_WS_URL 并启动 WS 服务可启用实时推送。");
+        }
       },
     });
 

@@ -43,7 +43,7 @@ function initializeSchema(db: Database.Database): void {
     -- agents 表
     CREATE TABLE IF NOT EXISTS agents (
       agent_id TEXT PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
       model TEXT NOT NULL,
       parent_id TEXT,
       path TEXT NOT NULL DEFAULT '/',
@@ -63,7 +63,7 @@ function initializeSchema(db: Database.Database): void {
     -- projects 表
     CREATE TABLE IF NOT EXISTS projects (
       project_id TEXT PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
 
@@ -116,7 +116,7 @@ function initializeSchema(db: Database.Database): void {
     -- playbooks 表
     CREATE TABLE IF NOT EXISTS playbooks (
       playbook_id TEXT PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
       project_id TEXT,
       decomposition_rules TEXT NOT NULL,
       assignment_rules TEXT NOT NULL,
@@ -177,4 +177,59 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at DESC);
   `);
+
+  // 迁移：移除 agents.name 的 UNIQUE 约束（SQLite 需重建表）
+  migrateAgentsNameUnique(db);
+}
+
+/** 迁移：如果 agents.name 仍有 UNIQUE 约束，重建表移除它 */
+function migrateAgentsNameUnique(db: Database.Database): void {
+  try {
+    // 检查 name 列是否有 UNIQUE 约束
+    const tableInfo = db.pragma("table_info(agents)") as { name: string; notnull: number; pk: number }[];
+    if (tableInfo.length === 0) return; // 表不存在，无需迁移
+
+    // 通过尝试插入两条同名记录来检测 UNIQUE 约束
+    const testId1 = "__migrate_test_1__";
+    const testId2 = "__migrate_test_2__";
+    try {
+      db.prepare("INSERT INTO agents (agent_id, name, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+        .run(testId1, "__test_name__", "test", 1, 1);
+      db.prepare("INSERT INTO agents (agent_id, name, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+        .run(testId2, "__test_name__", "test", 1, 1);
+      // 成功插入两条同名记录，说明没有 UNIQUE 约束，清理并返回
+      db.prepare("DELETE FROM agents WHERE agent_id IN (?, ?)").run(testId1, testId2);
+      return;
+    } catch {
+      // UNIQUE 约束存在，需要重建表
+      db.prepare("DELETE FROM agents WHERE agent_id IN (?, ?)").run(testId1, testId2);
+    }
+
+    // 重建 agents 表，移除 name 的 UNIQUE 约束
+    db.exec(`
+      ALTER TABLE agents RENAME TO agents_old;
+      CREATE TABLE agents (
+        agent_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        model TEXT NOT NULL,
+        parent_id TEXT,
+        path TEXT NOT NULL DEFAULT '/',
+        span_of_control_limit INTEGER NOT NULL DEFAULT 5,
+        span_exemption INTEGER NOT NULL DEFAULT 0,
+        span_exemption_reason TEXT,
+        capability_tags TEXT NOT NULL DEFAULT '[]',
+        monthly_budget REAL,
+        budget_used REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'idle',
+        avatar_url TEXT NOT NULL DEFAULT 'bot',
+        config TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO agents SELECT * FROM agents_old;
+      DROP TABLE agents_old;
+    `);
+  } catch {
+    // 迁移失败时静默处理，不影响启动
+  }
 }

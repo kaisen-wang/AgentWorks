@@ -1,19 +1,20 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { IconGroupChat, IconUser, renderAvatarIcon } from "@/components/common/Icons";
 import { useWebSocket } from "@/lib/ws/useWebSocket";
-import type { ChatId, MessageId } from "@/types";
+import type { ChatId, MessageId, Message } from "@/types";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "";
+const EMPTY_MESSAGES: Message[] = [];
 
 export function ChatWindow({ chatId }: { chatId: ChatId }) {
   const chat = useAppStore((s: AppState) => s.chats[chatId]);
-  const messages = useAppStore((s: AppState) => s.messages[chatId] || []);
+  const messages = useAppStore((s: AppState) => s.messages[chatId] ?? EMPTY_MESSAGES);
   const agents = useAppStore((s: AppState) => s.agents);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [replyingTo, setReplyingTo] = useState<MessageId | null>(null);
