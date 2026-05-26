@@ -114,12 +114,14 @@ export function OrgSidebar() {
 }
 
 function AgentTreeNode({ agent, allAgents, depth }: { agent: Agent; allAgents: Record<AgentId, Agent>; depth: number }) {
+  const openAgentDetail = useAppStore((s: AppState) => s.openAgentDetail);
   const children = agent.childIds.map((id) => allAgents[id]).filter(Boolean);
   const usagePercent = agent.maxChildren > 0 ? Math.round((agent.childIds.length / agent.maxChildren) * 100) : 0;
 
   return (
     <div>
       <div
+        onClick={() => openAgentDetail(agent.id)}
         className="group px-3 py-[7px] flex items-center gap-2 rounded-xl hover:bg-[var(--bg-hover)] transition-all duration-[120ms] cursor-pointer"
         style={{ paddingLeft: `${12 + depth * 14}px` }}
       >

@@ -12,6 +12,7 @@ import { CostPanel } from "@/components/common/CostPanel";
 import { ScriptPanel } from "@/components/common/ScriptPanel";
 import { RestModePanel } from "@/components/common/RestModePanel";
 import { CreateAgentPanel } from "@/components/common/CreateAgentPanel";
+import { AgentDetailPanel } from "@/components/common/AgentDetailPanel";
 
 export default function HomePage() {
   const activeChatId = useAppStore((s: AppState) => s.activeChatId);
@@ -21,6 +22,8 @@ export default function HomePage() {
   const createAgentInitialName = useAppStore((s: AppState) => s.createAgentInitialName);
   const closeCreateAgentPanel = useAppStore((s: AppState) => s.closeCreateAgentPanel);
   const openCreateAgentPanel = useAppStore((s: AppState) => s.openCreateAgentPanel);
+  const showAgentDetailId = useAppStore((s: AppState) => s.showAgentDetailId);
+  const closeAgentDetail = useAppStore((s: AppState) => s.closeAgentDetail);
 
   const [showOrgChart, setShowOrgChart] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
@@ -212,6 +215,7 @@ export default function HomePage() {
       {showScript && <ScriptPanel onClose={() => setShowScript(false)} />}
       {showRestMode && <RestModePanel onClose={() => setShowRestMode(false)} />}
       {showCreateAgentPanel && <CreateAgentPanel onClose={closeCreateAgentPanel} initialName={createAgentInitialName} />}
+      {showAgentDetailId && <AgentDetailPanel agentId={showAgentDetailId} onClose={closeAgentDetail} />}
     </div>
   );
 }

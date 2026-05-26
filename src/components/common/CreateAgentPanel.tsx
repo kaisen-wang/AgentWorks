@@ -37,6 +37,7 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
   const sendMessage = useAppStore((s: AppState) => s.sendMessage);
 
   const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState("");
   const [role, setRole] = useState<AgentRole>("specialist");
   const [parentId, setParentId] = useState<string>("");
   const [model, setModel] = useState("deepseek-v4-flash");
@@ -72,7 +73,7 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
     const budget = parseFloat(monthlyBudget);
     if (!isNaN(budget) && budget > 0) config.monthlyBudget = budget;
 
-    const result = createAgent(name.trim(), role, parentId || null, capabilities, config);
+    const result = createAgent(name.trim(), role, parentId || null, capabilities, config, description.trim());
 
     if ("error" in result) {
       setError(result.error || "创建失败");
@@ -119,6 +120,18 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
             placeholder="如：营销主管"
             className="input-base"
             autoFocus
+          />
+        </div>
+
+        {/* Description */}
+        <div className="space-y-2">
+          <label className="text-[12px] font-medium text-[var(--text-secondary)]">描述</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="描述该 Agent 的职责和能力..."
+            rows={2}
+            className="w-full resize-y bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] transition-all leading-relaxed"
           />
         </div>
 
@@ -193,7 +206,18 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
 
         {/* Capabilities */}
         <div className="space-y-2">
-          <label className="text-[12px] font-medium text-[var(--text-secondary)]">能力标签</label>
+          <div className="flex items-center justify-between">
+            <label className="text-[12px] font-medium text-[var(--text-secondary)]">能力标签</label>
+            <a
+              href="https://skillhub.cn/install/skillhub.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-[var(--accent)] hover:underline flex items-center gap-1"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M5 1V9M1 5H9"/></svg>
+              SkillHub 商店
+            </a>
+          </div>
           <div className="flex flex-wrap gap-2">
             {PRESET_CAPABILITIES.map((cap) => (
               <button

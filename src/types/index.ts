@@ -45,6 +45,7 @@ export interface AgentCapability {
 export interface Agent {
   id: AgentId;
   name: string;            // 显示名称，如 "营销主管"
+  description: string;     // Agent 描述
   role: AgentRole;
   parentId: AgentId | null; // 直接上级，null 表示直属老板
   childIds: AgentId[];     // 直接下属列表

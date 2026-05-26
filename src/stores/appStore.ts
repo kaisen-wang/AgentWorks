@@ -41,7 +41,7 @@ const AVATAR_MAP: Record<string, string> = {
 export interface AppState {
   // --- 组织架构 ---
   agents: Record<AgentId, Agent>;
-  createAgent: (name: string, role: AgentRole, parentId: AgentId | null, capabilities?: AgentCapability[], config?: Partial<AgentConfig>) => Agent | { error: string };
+  createAgent: (name: string, role: AgentRole, parentId: AgentId | null, capabilities?: AgentCapability[], config?: Partial<AgentConfig>, description?: string) => Agent | { error: string };
   deleteAgent: (id: AgentId) => void;
   updateAgent: (id: AgentId, updates: Partial<Agent>) => void;
   setParent: (agentId: AgentId, parentId: AgentId | null, force?: boolean) => { success: boolean; error?: string }; // RFT-05: force 跳过循环检测
@@ -147,6 +147,9 @@ export interface AppState {
   createAgentInitialName: string;
   openCreateAgentPanel: (initialName?: string) => void;
   closeCreateAgentPanel: () => void;
+  showAgentDetailId: AgentId | null;
+  openAgentDetail: (agentId: AgentId) => void;
+  closeAgentDetail: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -157,7 +160,7 @@ export const useAppStore = create<AppState>()(
   // ============================================================
   agents: {},
 
-  createAgent: (name, role, parentId, capabilities = [], config) => {
+  createAgent: (name, role, parentId, capabilities = [], config, description = "") => {
     const state = get();
     const id = uuidv4();
 
@@ -172,6 +175,7 @@ export const useAppStore = create<AppState>()(
     const agent: Agent = {
       id,
       name,
+      description,
       role,
       parentId,
       childIds: [],
@@ -1042,6 +1046,9 @@ export const useAppStore = create<AppState>()(
   createAgentInitialName: "",
   openCreateAgentPanel: (initialName = "") => set({ showCreateAgentPanel: true, createAgentInitialName: initialName }),
   closeCreateAgentPanel: () => set({ showCreateAgentPanel: false, createAgentInitialName: "" }),
+  showAgentDetailId: null,
+  openAgentDetail: (agentId) => set({ showAgentDetailId: agentId }),
+  closeAgentDetail: () => set({ showAgentDetailId: null }),
 
   // ============================================================
   // 插件市场 (EXT-02)
