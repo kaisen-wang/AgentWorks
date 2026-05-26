@@ -313,8 +313,9 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     sendMessage(chatId, "system", "system", `未知命令，输入 /help 查看帮助`);
   };
 
-  const handleInputChange = (value: string) => {
+  const handleInputChange = (value: string, fromCommandSelect = false) => {
     setInput(value);
+    if (fromCommandSelect) return; // 选择命令后不重新触发弹窗逻辑
     if (value.startsWith("/")) { setShowSlashMenu(true); setShowMentionMenu(false); }
     else if (value.includes("@")) { const lastAt = value.lastIndexOf("@"); setMentionFilter(value.slice(lastAt + 1)); setShowMentionMenu(true); setShowSlashMenu(false); }
     else { setShowSlashMenu(false); setShowMentionMenu(false); }
@@ -327,14 +328,14 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     <div className="relative">
       {/* Slash menu — glass */}
       {showSlashMenu && filteredCommands.length > 0 && (
-        <div className="absolute bottom-full left-3 right-3 mb-2 glass-heavy rounded-xl p-1.5 max-h-52 overflow-y-auto shadow-lg animate-slide-up glass-reflect">
+        <div className="absolute bottom-full left-4 right-4 mb-2 glass-heavy rounded-xl p-1.5 max-h-52 overflow-y-auto shadow-lg animate-slide-up z-10">
           <div className="text-[9px] font-semibold font-heading uppercase tracking-[0.08em] text-[var(--text-muted)] px-2 py-1.5">命令</div>
           {filteredCommands.map((c) => (
-            <button key={c.cmd} onClick={() => { setInput(c.cmd + " "); setShowSlashMenu(false); inputRef.current?.focus(); }}
+            <button key={c.cmd} onClick={() => { handleInputChange(c.cmd + " ", true); setShowSlashMenu(false); inputRef.current?.focus(); }}
               className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-[100ms] flex items-center gap-2.5 group">
-              <span className="w-5 flex items-center justify-center">{c.icon}</span>
-              <span className="text-[12px] text-[var(--accent)] font-mono">{c.cmd}</span>
-              <span className="text-[11px] text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors">{c.desc}</span>
+              <span className="w-5 flex-shrink-0 flex items-center justify-center">{c.icon}</span>
+              <span className="text-[12px] text-[var(--accent)] font-mono flex-shrink-0">{c.cmd}</span>
+              <span className="text-[11px] text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors truncate">{c.desc}</span>
             </button>
           ))}
         </div>
@@ -342,15 +343,15 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
 
       {/* Mention menu — glass */}
       {showMentionMenu && filteredAgents.length > 0 && (
-        <div className="absolute bottom-full left-3 right-3 mb-2 glass-heavy rounded-xl p-1.5 max-h-52 overflow-y-auto shadow-lg animate-slide-up glass-reflect">
+        <div className="absolute bottom-full left-4 right-4 mb-2 glass-heavy rounded-xl p-1.5 max-h-52 overflow-y-auto shadow-lg animate-slide-up glass-reflect z-10">
           <div className="text-[9px] font-semibold font-heading uppercase tracking-[0.08em] text-[var(--text-muted)] px-2 py-1.5">提及 Agent</div>
           {filteredAgents.map((a) => (
-            <button key={a.id} onClick={() => { const lastAt = input.lastIndexOf("@"); setInput(input.slice(0, lastAt) + `@${a.name} `); setShowMentionMenu(false); inputRef.current?.focus(); }}
+            <button key={a.id} onClick={() => { const lastAt = input.lastIndexOf("@"); handleInputChange(input.slice(0, lastAt) + `@${a.name} `, true); setShowMentionMenu(false); inputRef.current?.focus(); }}
               className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-[100ms] flex items-center gap-2.5 group">
-              <div className="w-5 h-5 rounded-md glass flex items-center justify-center glass-reflect">{renderAvatarIcon(a.avatar, 10)}</div>
-              <span className="text-[12px] text-[var(--text-primary)]">{a.name}</span>
-              <span className="text-[9px] text-[var(--text-muted)] glass px-1.5 py-[1px] rounded">{a.role}</span>
-              <span className={`status-dot status-${a.status} ml-auto`} />
+              <div className="w-5 h-5 rounded-md glass flex items-center justify-center glass-reflect flex-shrink-0">{renderAvatarIcon(a.avatar, 10)}</div>
+              <span className="text-[12px] text-[var(--text-primary)] truncate">{a.name}</span>
+              <span className="text-[9px] text-[var(--text-muted)] glass px-1.5 py-[1px] rounded flex-shrink-0">{a.role}</span>
+              <span className={`status-dot status-${a.status} ml-auto flex-shrink-0`} />
             </button>
           ))}
         </div>
