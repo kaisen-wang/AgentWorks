@@ -93,6 +93,19 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     if (mentions.length > 0) {
       const taskContent = text.replace(/@\S+/g, "").trim();
       for (const agentId of mentions) { const agent = agents[agentId]; if (agent?.role === "supervisor" && taskContent) { workflowEngine.assignTask(taskContent.slice(0, 30), taskContent, agentId, chatId); } }
+    } else {
+      // 自动触发聊天中所有 Agent 的回复
+      const chat = chats[chatId];
+      if (chat) {
+        const agentMembers = chat.members.filter(m => m.id !== "user" && m.id !== "system");
+        for (const member of agentMembers) {
+          const agent = agents[member.id];
+          if (agent) {
+            // 使用 workflowEngine 触发 Agent 回复
+            workflowEngine.executeAgent(agent.id, text, chatId);
+          }
+        }
+      }
     }
     setInput("");
     onReplySent?.();

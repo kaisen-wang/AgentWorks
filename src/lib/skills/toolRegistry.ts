@@ -110,7 +110,7 @@ export class ToolRegistry implements IToolRegistry {
   ): Promise<ToolResult> {
     const startTime = Date.now();
     let success = false;
-    let result: ToolResult;
+    let result: ToolResult | undefined;
     let error: string | undefined;
 
     try {
@@ -139,7 +139,7 @@ export class ToolRegistry implements IToolRegistry {
       return result;
     } catch (err: any) {
       error = err.message;
-      return {
+      result = {
         success: false,
         error: {
           code: 'EXECUTION_ERROR',
@@ -147,6 +147,7 @@ export class ToolRegistry implements IToolRegistry {
           details: err.stack,
         },
       };
+      return result;
     } finally {
       // 记录执行日志
       const duration = Date.now() - startTime;
@@ -280,7 +281,7 @@ export class ToolRegistry implements IToolRegistry {
       outputSchema: JSON.stringify(definition.outputSchema),
       scope,
       ownerId: agentId || null,
-      config: definition.config ? JSON.stringify(definition.config) : null,
+      config: (definition.type === 'custom' && definition.config) ? JSON.stringify(definition.config) : null,
       status: 'active',
       healthStatus: JSON.stringify({ healthy: true, status: 'ok', lastCheck: Date.now() }),
       createdAt: Date.now(),

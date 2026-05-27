@@ -145,29 +145,29 @@ export class ConfigManager {
       await this.load();
     }
 
-    if (!this.config.skills) {
-      this.config.skills = {};
+    if (!this.config!.skills) {
+      this.config!.skills = {};
     }
 
     if (scope === 'global') {
-      if (!this.config.skills.global) {
-        this.config.skills.global = [];
+      if (!this.config!.skills.global) {
+        this.config!.skills.global = [];
       }
-      this.config.skills.global.push(skill);
+      this.config!.skills.global.push(skill);
     } else {
-      if (!this.config.skills.private) {
-        this.config.skills.private = {};
+      if (!this.config!.skills.private) {
+        this.config!.skills.private = {};
       }
       if (!agentId) {
         throw new Error('agentId is required for private scope');
       }
-      if (!this.config.skills.private[agentId]) {
-        this.config.skills.private[agentId] = [];
+      if (!this.config!.skills.private[agentId]) {
+        this.config!.skills.private[agentId] = [];
       }
-      this.config.skills.private[agentId].push(skill);
+      this.config!.skills.private[agentId].push(skill);
     }
 
-    await this.save(this.config);
+    await this.save(this.config!);
   }
 
   /**
@@ -182,29 +182,29 @@ export class ConfigManager {
       await this.load();
     }
 
-    if (!this.config.tools) {
-      this.config.tools = {};
+    if (!this.config!.tools) {
+      this.config!.tools = {};
     }
 
     if (scope === 'global') {
-      if (!this.config.tools.global) {
-        this.config.tools.global = [];
+      if (!this.config!.tools.global) {
+        this.config!.tools.global = [];
       }
-      this.config.tools.global.push(tool);
+      this.config!.tools.global.push(tool);
     } else {
-      if (!this.config.tools.private) {
-        this.config.tools.private = {};
+      if (!this.config!.tools.private) {
+        this.config!.tools.private = {};
       }
       if (!agentId) {
         throw new Error('agentId is required for private scope');
       }
-      if (!this.config.tools.private[agentId]) {
-        this.config.tools.private[agentId] = [];
+      if (!this.config!.tools.private[agentId]) {
+        this.config!.tools.private[agentId] = [];
       }
-      this.config.tools.private[agentId].push(tool);
+      this.config!.tools.private[agentId].push(tool);
     }
 
-    await this.save(this.config);
+    await this.save(this.config!);
   }
 
   /**

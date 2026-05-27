@@ -8,8 +8,8 @@ import type {
   MCPToolInfo,
   MCPResourceInfo,
   JSONSchema,
+  IMCPAdapter,
 } from '@/types';
-import type { IMCPAdapter } from '@/lib/skills/types';
 
 /**
  * MCP 连接类

@@ -163,7 +163,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 注销 Tool
-    await manager.toolRegistry.unregister(toolId, scope, agentId);
+    await manager.toolRegistry.unregister(toolId, scope, agentId || undefined);
 
     return NextResponse.json({
       success: true,

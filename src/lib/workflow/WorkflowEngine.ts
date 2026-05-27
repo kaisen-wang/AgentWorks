@@ -765,6 +765,47 @@ export class WorkflowEngine {
     // 非敏感操作或已确认：实际执行
     return this.assignTask(task.slice(0, 30), task, agentId, chatId);
   }
+
+  /**
+   * 执行 Agent 回复（用于普通消息）
+   * 当用户发送普通消息时，自动触发 Agent 的回复
+   */
+  async executeAgent(
+    agentId: AgentId,
+    message: string,
+    chatId: ChatId
+  ): Promise<void> {
+    const store = useAppStore.getState();
+    const agent = store.agents[agentId];
+    if (!agent) return;
+
+    try {
+      // 设置 Agent 状态为执行中
+      store.setAgentStatus(agentId, "executing");
+
+      // 获取 Agent 实例
+      const agentInstance = this.getAgentInstance(agent);
+
+      // 执行 Agent 的 execute 方法
+      const result = await agentInstance.execute(message, { chatId });
+
+      if (result.success) {
+        // 发送回复消息
+        store.sendMessage(chatId, "text", agentId, result.data);
+        store.addAuditLog(agentId, "execute", result.data);
+      } else {
+        // 发送错误消息
+        store.sendMessage(chatId, "text", agentId, `执行失败: ${result.error || '未知错误'}`);
+      }
+
+      // 恢复 Agent 状态
+      store.setAgentStatus(agentId, "idle");
+    } catch (error: any) {
+      // 错误处理
+      store.sendMessage(chatId, "text", agentId, `执行出错: ${error.message}`);
+      store.setAgentStatus(agentId, "error");
+    }
+  }
 }
 
 // 单例

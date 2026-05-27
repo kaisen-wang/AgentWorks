@@ -163,7 +163,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 注销 Skill
-    await manager.skillRegistry.unregister(skillId, scope, agentId);
+    await manager.skillRegistry.unregister(skillId, scope, agentId || undefined);
 
     return NextResponse.json({
       success: true,
