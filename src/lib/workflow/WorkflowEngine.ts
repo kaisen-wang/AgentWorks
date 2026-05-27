@@ -779,6 +779,13 @@ export class WorkflowEngine {
     const agent = store.agents[agentId];
     if (!agent) return;
 
+    console.log('🤖 [Agent 开始处理]', {
+      时间: new Date().toLocaleTimeString(),
+      Agent: agent.name,
+      AgentID: agentId,
+      输入消息: message
+    });
+
     try {
       // 设置 Agent 状态为执行中
       store.setAgentStatus(agentId, "executing");
@@ -790,10 +797,28 @@ export class WorkflowEngine {
       const result = await agentInstance.execute(message, { chatId });
 
       if (result.success) {
+        // 打印 LLM 回复内容
+        console.log('💬 [Agent 回复成功]', {
+          时间: new Date().toLocaleTimeString(),
+          Agent: agent.name,
+          AgentID: agentId,
+          回复内容: result.data,
+          费用: result.cost ? `¥${result.cost.toFixed(4)}` : '未统计',
+          API调用: result.apiCalls || 0
+        });
+        
         // 发送回复消息
         store.sendMessage(chatId, "text", agentId, result.data);
         store.addAuditLog(agentId, "execute", result.data);
       } else {
+        // 打印错误信息
+        console.error('❌ [Agent 回复失败]', {
+          时间: new Date().toLocaleTimeString(),
+          Agent: agent.name,
+          AgentID: agentId,
+          错误: result.error || '未知错误'
+        });
+        
         // 发送错误消息
         store.sendMessage(chatId, "text", agentId, `执行失败: ${result.error || '未知错误'}`);
       }
@@ -801,6 +826,15 @@ export class WorkflowEngine {
       // 恢复 Agent 状态
       store.setAgentStatus(agentId, "idle");
     } catch (error: any) {
+      // 打印异常信息
+      console.error('🔥 [Agent 执行异常]', {
+        时间: new Date().toLocaleTimeString(),
+        Agent: agent.name,
+        AgentID: agentId,
+        异常: error.message,
+        堆栈: error.stack
+      });
+      
       // 错误处理
       store.sendMessage(chatId, "text", agentId, `执行出错: ${error.message}`);
       store.setAgentStatus(agentId, "error");

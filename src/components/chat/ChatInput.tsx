@@ -89,6 +89,15 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     const mentionRegex = /@(\S+)/g;
     let match: RegExpExecArray | null;
     while ((match = mentionRegex.exec(text)) !== null) { const agent = agentList.find((a) => a.name === match![1]); if (agent) mentions.push(agent.id); }
+    
+    // 打印发送的消息内容
+    console.log('📤 [用户发送消息]', {
+      时间: new Date().toLocaleTimeString(),
+      内容: text,
+      提及: mentions.length > 0 ? mentions : '无',
+      聊天ID: chatId
+    });
+    
     sendMessage(chatId, "text", "user", text, { mentions, ...(replyToId ? { replyToId } : {}) });
     if (mentions.length > 0) {
       const taskContent = text.replace(/@\S+/g, "").trim();
