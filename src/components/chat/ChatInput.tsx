@@ -52,6 +52,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   const noAgents = agentList.length === 0;
 
   const handleSubmit = () => {
+    console.log('handleSubmit.input', input);
     const text = input.trim();
     if (!text) return;
     if (text.startsWith("/")) { handleSlashCommand(text); setInput(""); return; }
@@ -105,15 +106,39 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     } else {
       // 自动触发聊天中所有 Agent 的回复
       const chat = chats[chatId];
+      
+      console.log('🔍 [调试] 检查聊天和Agent', {
+        聊天ID: chatId,
+        聊天存在: !!chat,
+        聊天成员: chat?.members?.map(m => ({ id: m.id, name: m.name, role: m.role })),
+        所有Agents: Object.keys(agents)
+      });
+      
       if (chat) {
         const agentMembers = chat.members.filter(m => m.id !== "user" && m.id !== "system");
+        
+        console.log('🔍 [调试] Agent成员', {
+          Agent成员数: agentMembers.length,
+          Agent成员: agentMembers.map(m => ({ id: m.id, name: m.name }))
+        });
+        
         for (const member of agentMembers) {
           const agent = agents[member.id];
+          
+          console.log('🔍 [调试] 检查Agent', {
+            成员ID: member.id,
+            Agent存在: !!agent,
+            Agent信息: agent ? { id: agent.id, name: agent.name, role: agent.role } : null
+          });
+          
           if (agent) {
             // 使用 workflowEngine 触发 Agent 回复
+            console.log('✅ [调试] 触发Agent回复', { agentId: agent.id, agentName: agent.name });
             workflowEngine.executeAgent(agent.id, text, chatId);
           }
         }
+      } else {
+        console.warn('⚠️ [警告] 聊天不存在', { chatId });
       }
     }
     setInput("");
