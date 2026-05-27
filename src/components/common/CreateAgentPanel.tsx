@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { useAppStore } from "@/stores/appStore";
+import { useAppStore, syncToServer } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import type { AgentRole, AgentCapability } from "@/types";
 import { PRESET_CAPABILITIES } from "@/lib/capability/CapabilityMatcher";
@@ -91,6 +91,16 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
     sendMessage(chat.id, "system", "system", `已创建${role === "supervisor" ? "主管" : "专员"} Agent「${result.name}」，模型 ${model}${capStr}`);
 
     setActiveChat(chat.id);
+    
+    // 立即同步到服务端
+    syncToServer().then(({ synced, error }) => {
+      if (synced) {
+        console.log('✅ [Agent创建] 已同步到服务端', { agentId: result.id, agentName: result.name });
+      } else {
+        console.error('❌ [Agent创建] 同步失败', { error });
+      }
+    });
+    
     onClose();
   };
 
