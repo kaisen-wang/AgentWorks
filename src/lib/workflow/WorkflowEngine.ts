@@ -13,6 +13,7 @@
 import { useAppStore } from "@/stores/appStore";
 import { SupervisorAgent, SpecialistAgent } from "@/lib/agent";
 import { sendSmsSummary } from "@/lib/notification/NotificationService";
+import type { LLMConfig } from "@/lib/llm";
 import type {
   AgentId, TaskId, ChatId, MessageId, Agent, Task, SubTask, Message,
   ReportCard, DecisionOption, TaskCard, BudgetAlert, HeartbeatAlert,
@@ -793,8 +794,25 @@ export class WorkflowEngine {
       // 获取 Agent 实例
       const agentInstance = this.getAgentInstance(agent);
 
+      // 构建 LLM 配置
+      const llmConfig: LLMConfig | undefined = agent.config.llmEndpoint ? {
+        endpoint: agent.config.llmEndpoint,
+        apiKey: agent.config.llmApiKey || process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || "",
+        model: agent.config.model,
+      } : {
+        endpoint: process.env.NEXT_PUBLIC_DEEPSEEK_ENDPOINT || "https://api.deepseek.com/v1/chat/completions",
+        apiKey: process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || "",
+        model: agent.config.model,
+      };
+
+      console.log('🔧 [LLM配置]', {
+        endpoint: llmConfig?.endpoint,
+        model: llmConfig?.model,
+        hasApiKey: !!llmConfig?.apiKey
+      });
+
       // 执行 Agent 的 execute 方法
-      const result = await agentInstance.execute(message, { chatId });
+      const result = await agentInstance.execute(message, { chatId, llmConfig });
 
       if (result.success) {
         // 打印 LLM 回复内容
