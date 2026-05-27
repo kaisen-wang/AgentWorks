@@ -32,6 +32,14 @@ export interface AgentConfig {
   reportFrequency?: "on_completion" | "daily" | "weekly"; // BUP-03: 上报频率，默认 on_completion
   llmEndpoint?: string;    // LLM API 端点（OpenAI 兼容接口）
   llmApiKey?: string;      // LLM API Key
+  skillsConfig?: {
+    autoDiscover: boolean;       // 自动发现 Skills
+    maxConcurrency: number;      // 最大并发执行数
+  };
+  toolsConfig?: {
+    autoDiscover: boolean;       // 自动发现 Tools
+    maxConcurrency: number;      // 最大并发执行数
+  };
 }
 
 /** Agent 能力标签 */
@@ -56,6 +64,8 @@ export interface Agent {
   config: AgentConfig;
   status: ActionStatus;    // 当前动作状态
   avatar: string;          // 头像标识符: "bot" | "user" | "supervisor" | "specialist" | "group" | "collaborator"
+  skillIds?: SkillId[];    // 绑定的 Skill ID 列表
+  toolIds?: ToolId[];      // 绑定的 Tool ID 列表
   createdAt: number;       // 创建时间戳
   updatedAt: number;       // 更新时间戳
 }
@@ -448,4 +458,355 @@ export interface ABAssignment {
   experimentId: string;
   variantId: string;
   variantName: string;
+}
+
+// ============================================================
+// Skills 和 Tools 相关类型定义
+// ============================================================
+
+// --- 基础类型 ---
+export type SkillId = string;
+export type ToolId = string;
+
+// --- Skill 相关类型 ---
+
+/** Skill 元数据 */
+export interface SkillMeta {
+  id: SkillId;
+  name: string;
+  description: string;
+  version: string;
+  author?: string;
+  tags?: string[];
+  category?: string;
+}
+
+/** Tool 依赖声明 */
+export interface ToolDependency {
+  toolId: ToolId;
+  required: boolean;
+  alias?: string;
+}
+
+/** Skill 定义 */
+export interface SkillDefinition {
+  meta: SkillMeta;
+  inputSchema: JSONSchema;        // 输入参数的 JSON Schema
+  outputSchema: JSONSchema;       // 输出结果的 JSON Schema
+  dependencies: ToolDependency[]; // 依赖的 Tools
+  executor: SkillExecutor;        // 执行函数
+  config?: Record<string, any>;   // Skill 配置
+}
+
+/** Skill 执行函数 */
+export type SkillExecutor = (context: SkillContext, params: Record<string, any>) => Promise<SkillResult>;
+
+/** Skill 执行上下文 */
+export interface SkillContext {
+  agentId: AgentId;
+  agentConfig: AgentConfig;
+  tools: Map<ToolId, ITool>;
+  logger: Logger;
+  memory: MemoryStore;
+}
+
+/** Skill 执行结果 */
+export interface SkillResult {
+  success: boolean;
+  data?: any;
+  error?: SkillError;
+  metadata?: Record<string, any>;
+}
+
+/** Skill 错误 */
+export interface SkillError {
+  code: string;
+  message: string;
+  details?: any;
+}
+
+/** 已加载的 Skill */
+export interface LoadedSkill {
+  definition: SkillDefinition;
+  tools: Map<ToolId, ITool>;
+  status: 'loaded' | 'initialized' | 'error';
+  loadedAt: number;
+}
+
+// --- Tool 相关类型 ---
+
+/** Tool 元数据 */
+export interface ToolMeta {
+  id: ToolId;
+  name: string;
+  description: string;
+  version: string;
+  category?: string;
+  tags?: string[];
+}
+
+/** Tool 类型 */
+export type ToolType = 'mcp' | 'custom';
+
+/** MCP Tool 定义 */
+export interface MCPToolDefinition {
+  type: 'mcp';
+  meta: ToolMeta;
+  endpoint: string;               // MCP 服务器端点
+  toolName: string;               // MCP 工具名称
+  inputSchema: JSONSchema;
+  outputSchema: JSONSchema;
+  authType?: 'bearer' | 'basic' | 'none';
+  authConfig?: {
+    token?: string;
+    username?: string;
+    password?: string;
+  };
+  timeout?: number;
+}
+
+/** Custom Tool 定义 */
+export interface CustomToolDefinition {
+  type: 'custom';
+  meta: ToolMeta;
+  inputSchema: JSONSchema;
+  outputSchema: JSONSchema;
+  executor: ToolExecutor;
+  config?: Record<string, any>;
+}
+
+/** Tool 定义（联合类型） */
+export type ToolDefinition = MCPToolDefinition | CustomToolDefinition;
+
+/** Tool 执行函数 */
+export type ToolExecutor = (params: Record<string, any>, context: ToolExecutionContext) => Promise<ToolResult>;
+
+/** Tool 执行上下文 */
+export interface ToolExecutionContext {
+  agentId?: AgentId;
+  logger?: Logger;
+  timeout?: number;
+}
+
+/** Tool 执行结果 */
+export interface ToolResult {
+  success: boolean;
+  data?: any;
+  error?: ToolError;
+  metadata?: Record<string, any>;
+}
+
+/** Tool 错误 */
+export interface ToolError {
+  code: string;
+  message: string;
+  details?: any;
+}
+
+/** Tool 接口 */
+export interface ITool {
+  definition: ToolDefinition;
+  execute(params: Record<string, any>, context?: ToolExecutionContext): Promise<ToolResult>;
+  healthCheck(): Promise<HealthStatus>;
+}
+
+// --- 资源池相关类型 ---
+
+/** 资源范围 */
+export type ResourceScope = 'global' | 'private';
+
+/** 资源池接口 */
+export interface IResourcePool<T extends { id: string }> {
+  register(resource: T): Promise<void>;
+  unregister(id: string): Promise<void>;
+  find(id: string): Promise<T | undefined>;
+  list(): Promise<T[]>;
+  exists(id: string): Promise<boolean>;
+}
+
+/** 全局资源池 */
+export interface GlobalPool<T extends { id: string }> extends IResourcePool<T> {
+  cloneToPrivate(agentId: AgentId, resourceId: string): Promise<T>;
+}
+
+/** 私有资源池 */
+export interface PrivatePool<T extends { id: string }> extends IResourcePool<T> {
+  listByOwner(agentId: AgentId): Promise<T[]>;
+  promoteToGlobal(resourceId: string): Promise<T>;
+}
+
+/** 资源管理器 */
+export interface IResourceManager<T extends { id: string }> {
+  registerGlobal(resource: T): Promise<void>;
+  registerPrivate(agentId: AgentId, resource: T): Promise<void>;
+  find(agentId: AgentId, resourceId: string): Promise<T | undefined>;
+  listAccessible(agentId: AgentId): Promise<T[]>;
+}
+
+// --- 依赖解析相关类型 ---
+
+/** 依赖节点 */
+export interface DependencyNode {
+  id: string;
+  type: 'skill' | 'tool';
+  required: boolean;
+  status: 'resolved' | 'missing' | 'error';
+}
+
+/** 依赖图 */
+export interface DependencyGraph {
+  nodes: Map<string, DependencyNode>;
+  edges: Array<{ from: string; to: string }>;
+}
+
+/** 依赖验证结果 */
+export interface DependencyValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+// --- 注册表相关类型 ---
+
+/** Skill 注册表接口 */
+export interface ISkillRegistry {
+  register(definition: SkillDefinition, scope: ResourceScope, agentId?: AgentId): Promise<void>;
+  unregister(skillId: SkillId, scope: ResourceScope, agentId?: AgentId): Promise<void>;
+  find(agentId: AgentId, skillId: SkillId): Promise<SkillDefinition | undefined>;
+  listAccessible(agentId: AgentId): Promise<SkillDefinition[]>;
+  load(skillId: SkillId): Promise<LoadedSkill>;
+  unload(skillId: SkillId): Promise<void>;
+  healthCheck(skillId: SkillId): Promise<HealthStatus>;
+}
+
+/** Tool 注册表接口 */
+export interface IToolRegistry {
+  register(definition: ToolDefinition, scope: ResourceScope, agentId?: AgentId): Promise<void>;
+  unregister(toolId: ToolId, scope: ResourceScope, agentId?: AgentId): Promise<void>;
+  find(agentId: AgentId, toolId: ToolId): Promise<ToolDefinition | undefined>;
+  listAccessible(agentId: AgentId): Promise<ToolDefinition[]>;
+  execute(toolId: ToolId, params: Record<string, any>, context?: ToolExecutionContext): Promise<ToolResult>;
+  healthCheck(toolId: ToolId): Promise<HealthStatus>;
+}
+
+/** 依赖解析器接口 */
+export interface IDependencyResolver {
+  resolve(skill: SkillDefinition): Promise<DependencyGraph>;
+  validate(graph: DependencyGraph): Promise<DependencyValidationResult>;
+  detectCycle(graph: DependencyGraph): CycleDetectionResult;
+  topologicalSort(graph: DependencyGraph): string[];
+}
+
+// --- 执行引擎相关类型 ---
+
+/** Skill 执行器接口 */
+export interface ISkillExecutor {
+  execute(agentId: AgentId, skillId: SkillId, params: Record<string, any>): Promise<SkillResult>;
+}
+
+/** Tool 执行器接口 */
+export interface IToolExecutor {
+  execute(toolId: ToolId, params: Record<string, any>, context?: ToolExecutionContext): Promise<ToolResult>;
+  executeBatch(tasks: Array<{ toolId: ToolId; params: Record<string, any> }>, context?: ToolExecutionContext): Promise<ToolResult[]>;
+}
+
+/** MCP 适配器接口 */
+export interface IMCPAdapter {
+  connect(config: MCPConfig): Promise<void>;
+  disconnect(): Promise<void>;
+  listTools(): Promise<MCPToolInfo[]>;
+  callTool(toolName: string, params: Record<string, any>): Promise<any>;
+  listResources(): Promise<MCPResourceInfo[]>;
+  readResource(uri: string): Promise<any>;
+}
+
+/** MCP 配置 */
+export interface MCPConfig {
+  endpoint: string;
+  authType?: 'bearer' | 'basic' | 'none';
+  authConfig?: {
+    token?: string;
+    username?: string;
+    password?: string;
+  };
+  timeout?: number;
+  retryConfig?: {
+    maxRetries: number;
+    retryDelay: number;
+  };
+}
+
+/** MCP 工具信息 */
+export interface MCPToolInfo {
+  name: string;
+  description: string;
+  inputSchema: JSONSchema;
+}
+
+/** MCP 资源信息 */
+export interface MCPResourceInfo {
+  uri: string;
+  name: string;
+  description?: string;
+}
+
+// --- 健康检查相关类型 ---
+
+/** 健康状态 */
+export interface HealthStatus {
+  healthy: boolean;
+  status: 'ok' | 'warning' | 'error';
+  message?: string;
+  details?: Record<string, any>;
+  lastCheck: number;
+}
+
+/** 循环检测结果 */
+export interface CycleDetectionResult {
+  hasCycle: boolean;
+  cycle?: string[];
+}
+
+// --- 执行日志相关类型 ---
+
+/** 执行日志 */
+export interface ExecutionLog {
+  id: string;
+  resourceType: 'skill' | 'tool';
+  resourceId: string;
+  agentId: AgentId;
+  action: 'execute' | 'health_check' | 'load' | 'unload';
+  input?: any;
+  output?: any;
+  success: boolean;
+  error?: string;
+  duration: number;
+  timestamp: number;
+}
+
+// --- 辅助类型 ---
+
+/** JSON Schema */
+export interface JSONSchema {
+  type: string;
+  properties?: Record<string, any>;
+  required?: string[];
+  additionalProperties?: boolean;
+  [key: string]: any;
+}
+
+/** Logger 接口 */
+export interface Logger {
+  debug(message: string, ...args: any[]): void;
+  info(message: string, ...args: any[]): void;
+  warn(message: string, ...args: any[]): void;
+  error(message: string, ...args: any[]): void;
+}
+
+/** Memory Store 接口 */
+export interface MemoryStore {
+  get(key: string): Promise<any>;
+  set(key: string, value: any, ttl?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+  clear(): Promise<void>;
 }

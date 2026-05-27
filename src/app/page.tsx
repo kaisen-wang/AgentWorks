@@ -168,7 +168,7 @@ export default function HomePage() {
 
         {/* Right — Chat or empty state */}
         <main className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
             {activeChatId && <ChatWindow chatId={activeChatId} />}
           </div>
           {!activeChatId && (

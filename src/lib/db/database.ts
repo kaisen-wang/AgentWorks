@@ -167,6 +167,90 @@ function initializeSchema(db: Database.Database): void {
       created_at INTEGER NOT NULL
     );
 
+    -- Skills 表
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      version TEXT NOT NULL,
+      author TEXT,
+      tags TEXT,
+      category TEXT,
+      input_schema TEXT NOT NULL,
+      output_schema TEXT NOT NULL,
+      dependencies TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('global', 'private')),
+      owner_id TEXT,
+      config TEXT,
+      executor_type TEXT NOT NULL,
+      executor_data TEXT,
+      status TEXT NOT NULL,
+      health_status TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    -- Tools 表
+    CREATE TABLE IF NOT EXISTS tools (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      version TEXT NOT NULL,
+      category TEXT,
+      tags TEXT,
+      type TEXT NOT NULL CHECK(type IN ('mcp', 'custom')),
+      input_schema TEXT NOT NULL,
+      output_schema TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('global', 'private')),
+      owner_id TEXT,
+      config TEXT,
+      endpoint TEXT,
+      tool_name TEXT,
+      auth_type TEXT,
+      auth_config TEXT,
+      timeout INTEGER,
+      executor_data TEXT,
+      status TEXT NOT NULL,
+      health_status TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    -- Agent-Skill 绑定表
+    CREATE TABLE IF NOT EXISTS agent_skill_bindings (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      skill_id TEXT NOT NULL,
+      auto_discover INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE(agent_id, skill_id)
+    );
+
+    -- Agent-Tool 绑定表
+    CREATE TABLE IF NOT EXISTS agent_tool_bindings (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      tool_id TEXT NOT NULL,
+      auto_discover INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE(agent_id, tool_id)
+    );
+
+    -- 执行日志表
+    CREATE TABLE IF NOT EXISTS execution_logs (
+      id TEXT PRIMARY KEY,
+      resource_type TEXT NOT NULL CHECK(resource_type IN ('skill', 'tool')),
+      resource_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      input TEXT,
+      output TEXT,
+      success INTEGER NOT NULL,
+      error TEXT,
+      duration INTEGER NOT NULL,
+      timestamp INTEGER NOT NULL
+    );
+
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_tasks_assignee_priority ON tasks(assignee_id, priority DESC, created_at ASC);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
@@ -176,6 +260,19 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_skills_scope ON skills(scope);
+    CREATE INDEX IF NOT EXISTS idx_skills_owner ON skills(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
+    CREATE INDEX IF NOT EXISTS idx_tools_scope ON tools(scope);
+    CREATE INDEX IF NOT EXISTS idx_tools_owner ON tools(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_tools_type ON tools(type);
+    CREATE INDEX IF NOT EXISTS idx_agent_skill_bindings_agent ON agent_skill_bindings(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_skill_bindings_skill ON agent_skill_bindings(skill_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_tool_bindings_agent ON agent_tool_bindings(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_tool_bindings_tool ON agent_tool_bindings(tool_id);
+    CREATE INDEX IF NOT EXISTS idx_execution_logs_resource ON execution_logs(resource_type, resource_id);
+    CREATE INDEX IF NOT EXISTS idx_execution_logs_agent ON execution_logs(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_execution_logs_timestamp ON execution_logs(timestamp DESC);
   `);
 
   // 迁移：移除 agents.name 的 UNIQUE 约束（SQLite 需重建表）
