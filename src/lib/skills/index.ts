@@ -43,7 +43,7 @@ export interface SkillsToolsManager {
 /**
  * 初始化 Skills 和 Tools 管理器
  */
-export function createSkillsToolsManager(): SkillsToolsManager {
+export async function createSkillsToolsManager(): Promise<SkillsToolsManager> {
   const db = getDb();
 
   // 创建数据访问层
@@ -54,6 +54,10 @@ export function createSkillsToolsManager(): SkillsToolsManager {
   // 创建注册表
   const toolRegistry = new ToolRegistry(toolRepo, executionLogRepo);
   const skillRegistry = new SkillRegistry(skillRepo, toolRegistry, executionLogRepo);
+
+  // 初始化全局工具（Read、Write、Edit、Bash）
+  const { initializeGlobalTools } = await import('@/lib/tools/init');
+  await initializeGlobalTools(toolRegistry);
 
   // 创建执行器
   const toolExecutor = new ToolExecutor(toolRegistry);

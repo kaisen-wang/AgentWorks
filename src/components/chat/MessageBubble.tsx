@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/stores/appStore";
 import { IconUser, IconBot, renderAvatarIcon } from "@/components/common/Icons";
+import { MarkdownRenderer } from "@/components/common/MarkdownRenderer";
 import type { Message, TaskCard, ReportCard, BudgetAlert, HeartbeatAlert, ProgressData, FileData, ImageData } from "@/types";
 
 export function MessageBubble({ message, onReply }: { message: Message; onReply?: (messageId: string) => void }) {
@@ -34,7 +35,7 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
           isUser ? "glass-medium border border-[var(--cta)] border-opacity-20" : "card-glow"
         }`}>
           <div className="px-3.5 py-2.5">
-            {message.type === "text" && <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">{message.content}</p>}
+            {message.type === "text" && <MarkdownRenderer content={message.content} className="text-[13px] text-[var(--text-primary)]" />}
             {message.type === "task_card" && message.taskCard && <TaskCardView card={message.taskCard} />}
             {message.type === "report_card" && message.reportCard && <ReportCardView card={message.reportCard} chatId={message.chatId} messageId={message.id} onResolve={resolveReportCard} />}
             {message.type === "budget_alert" && message.budgetAlert && <BudgetAlertView alert={message.budgetAlert} chatId={message.chatId} messageId={message.id} onResolve={resolveBudgetAlert} />}

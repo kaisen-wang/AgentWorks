@@ -100,6 +100,7 @@ src/
 │   ├── nlu/                # 自然语言命令解析器
 │   ├── reliability/        # 可靠性 (IdempotencyManager 幂等性)
 │   ├── scheduler/          # Agent 独立任务队列 (优先级+抢占)
+│   ├── tools/              # 全局工具 (Read/Write/Edit/Bash + 安全管理)
 │   ├── workflow/           # 双向工作流引擎
 │   └── ws/                 # WebSocket 实时通信 (ChatWebSocket/useWebSocket)
 ├── stores/
@@ -107,6 +108,49 @@ src/
 └── types/
     └── index.ts            # TypeScript 全局类型定义
 ```
+
+## 全局工具
+
+AgentWorks 提供四个全局工具，用于文件操作和命令执行：
+
+- **Read**: 读取文件内容，支持行号显示和分页读取
+- **Write**: 写入文件内容，支持创建新文件和覆盖现有文件
+- **Edit**: 编辑文件内容，支持精确字符串替换和批量替换
+- **Bash**: 执行系统命令，支持超时控制、工作目录和环境变量设置
+
+这些工具在应用启动时自动注册为全局资源，所有 Agent 都可以访问和使用。
+
+### 快速使用
+
+```typescript
+// 读取文件
+const result = await toolRegistry.execute('read', {
+  file_path: '/path/to/file.txt'
+});
+
+// 写入文件
+await toolRegistry.execute('write', {
+  file_path: '/path/to/file.txt',
+  content: 'Hello, World!'
+});
+
+// 编辑文件
+await toolRegistry.execute('edit', {
+  file_path: '/path/to/file.txt',
+  old_string: 'old',
+  new_string: 'new'
+});
+
+// 执行命令
+await toolRegistry.execute('bash', {
+  command: 'npm test'
+});
+```
+
+### 详细文档
+
+- [全局工具使用文档](.codeartsdoer/docs/global-tools.md)
+- [使用示例](.codeartsdoer/examples/global-tools/)
 
 ## 需求覆盖
 

@@ -1,0 +1,102 @@
+.markdown-body {
+  /* 使用 CSS 变量，自动跟随主题 */
+  --md-text-color: var(--text-primary);
+  --md-bg-color: var(--bg-primary);
+  --md-code-bg: var(--bg-hover);
+  --md-border-color: var(--border);
+
+  /* 标题样式 */
+  & h1 { font-size: 2em; font-weight: 700; margin: 0.67em 0; }
+  & h2 { font-size: 1.5em; font-weight: 600; margin: 0.83em 0; }
+  & h3 { font-size: 1.25em; font-weight: 600; margin: 1em 0; }
+  & h4 { font-size: 1em; font-weight: 600; margin: 1.33em 0; }
+  & h5 { font-size: 0.875em; font-weight: 600; margin: 1.67em 0; }
+  & h6 { font-size: 0.85em; font-weight: 600; margin: 2em 0; }
+
+  /* 段落和文本 */
+  & p { margin: 1em 0; line-height: 1.6; }
+  & strong { font-weight: 600; }
+  & em { font-style: italic; }
+
+  /* 代码样式 */
+  & code {
+    background: var(--md-code-bg);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9em;
+  }
+
+  & pre {
+    background: var(--bg-secondary);
+    padding: 1em;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+
+  & pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  /* 链接样式 */
+  & a {
+    color: var(--accent);
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+
+  /* 列表样式 */
+  & ul, & ol { padding-left: 2em; margin: 1em 0; }
+  & li { margin: 0.5em 0; }
+  & li::marker { color: var(--text-secondary); }
+
+  /* 引用样式 */
+  & blockquote {
+    border-left: 4px solid var(--md-border-color);
+    padding-left: 1em;
+    margin: 1em 0;
+    color: var(--text-secondary);
+  }
+
+  /* 表格样式 */
+  & table { 
+    border-collapse: collapse; 
+    width: 100%; 
+    margin: 1em 0;
+  }
+  & th, & td { 
+    border: 1px solid var(--md-border-color); 
+    padding: 0.5em 1em;
+    text-align: left;
+  }
+  & th {
+    background: var(--bg-hover);
+    font-weight: 600;
+  }
+
+  /* 分隔线 */
+  & hr {
+    border: none;
+    border-top: 1px solid var(--md-border-color);
+    margin: 2em 0;
+  }
+
+  /* 图片 */
+  & img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    margin: 1em 0;
+  }
+}
+
+/* 错误状态样式 */
+.markdown-error {
+  padding: 1em;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-secondary);
+}
