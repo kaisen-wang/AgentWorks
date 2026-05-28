@@ -40,12 +40,37 @@ const DEFAULT_CONFIG: Partial<LLMConfig> = {
 // ============================================================
 
 interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  name?: string; // for tool messages
+  tool_call_id?: string; // for tool messages
+}
+
+interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, any>;
+      required?: string[];
+    };
+  };
+}
+
+interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
 
 interface LLMResponse {
   content: string;
+  toolCalls?: ToolCall[];
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   model: string;
 }
@@ -120,7 +145,8 @@ export function buildDecomposeUserPrompt(taskDescription: string): string {
  */
 export async function callLLM(
   messages: ChatMessage[],
-  config: LLMConfig
+  config: LLMConfig,
+  options?: { tools?: ToolDefinition[]; toolChoice?: "auto" | "none" | "required" }
 ): Promise<LLMResponse> {
   const fullConfig = { ...DEFAULT_CONFIG, ...config };
 
@@ -128,18 +154,26 @@ export async function callLLM(
   const timeoutId = setTimeout(() => controller.abort(), fullConfig.timeout);
 
   try {
+    const requestBody: any = {
+      model: fullConfig.model,
+      messages,
+      temperature: fullConfig.temperature,
+      max_tokens: fullConfig.maxTokens,
+    };
+
+    // 添加工具定义
+    if (options?.tools && options.tools.length > 0) {
+      requestBody.tools = options.tools;
+      requestBody.tool_choice = options.toolChoice || "auto";
+    }
+
     const response = await fetch(`${fullConfig.endpoint}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${fullConfig.apiKey}`,
       },
-      body: JSON.stringify({
-        model: fullConfig.model,
-        messages,
-        temperature: fullConfig.temperature,
-        max_tokens: fullConfig.maxTokens,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -148,8 +182,21 @@ export async function callLLM(
     }
 
     const data = await response.json();
+    const message = data.choices?.[0]?.message;
+
+    // 解析工具调用
+    const toolCalls: ToolCall[] | undefined = message?.tool_calls?.map((tc: any) => ({
+      id: tc.id,
+      type: tc.type,
+      function: {
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+      },
+    }));
+
     return {
-      content: data.choices?.[0]?.message?.content || "",
+      content: message?.content || "",
+      toolCalls,
       usage: data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,

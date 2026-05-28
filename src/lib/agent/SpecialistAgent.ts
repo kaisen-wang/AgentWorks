@@ -10,7 +10,8 @@
 import { BaseAgent, ExecutionResult, ReportContent, ArchiveInput } from "./BaseAgent";
 import type { AgentId, AgentConfig, AgentCapability } from "@/types";
 import { callLLM } from "@/lib/llm";
-import type { LLMConfig } from "@/lib/llm";
+import type { LLMConfig, ToolCall } from "@/lib/llm";
+import { getAgentToolDefinitions, executeToolCall, type ToolExecutionResult } from "./AgentTools";
 
 export class SpecialistAgent extends BaseAgent {
   readonly capabilities: AgentCapability[];
@@ -50,20 +51,73 @@ export class SpecialistAgent extends BaseAgent {
           : "你是一个通用专员";
 
         const systemPrompt = `你是 ${this.name}，一个专员 Agent。${capabilityDesc}
-请根据任务描述完成工作，直接输出结果内容。`;
 
+当用户要求创建文件、编写代码等任务时，请使用提供的工具来完成实际操作。
+不要只是在对话中输出代码，而是调用工具来创建实际的文件。
+
+例如：
+- 用户要求"写一个HTML页面" → 调用 write_file 工具创建文件
+- 用户要求"修改某个文件" → 调用 edit_file 工具编辑文件
+- 用户要求"查看某个文件" → 调用 read_file 工具读取文件
+
+完成工具调用后，简要说明你做了什么。`;
+
+        // 获取工具定义
+        const tools = getAgentToolDefinitions();
+
+        // 调用LLM，传递工具定义
         const response = await callLLM(
           [
             { role: "system", content: systemPrompt },
             { role: "user", content: task },
           ],
-          llmConfig
+          llmConfig,
+          { tools, toolChoice: "auto" }
         );
 
         const cost = response.usage
           ? (response.usage.promptTokens * 0.00003 + response.usage.completionTokens * 0.00006)
           : 0.01;
 
+        // 检查是否有工具调用
+        if (response.toolCalls && response.toolCalls.length > 0) {
+          console.log(`🔧 [${this.name}] LLM请求调用 ${response.toolCalls.length} 个工具`);
+
+          // 执行工具调用
+          const toolResults: Array<{ toolCall: ToolCall; result: ToolExecutionResult }> = [];
+          
+          for (const toolCall of response.toolCalls) {
+            console.log(`🔧 [${this.name}] 执行工具: ${toolCall.function.name}`);
+            
+            const result = await executeToolCall(
+              toolCall.function.name,
+              toolCall.function.arguments
+            );
+            
+            toolResults.push({ toolCall, result });
+            
+            console.log(`✅ [${this.name}] 工具执行结果:`, result.success ? result.output : result.error);
+          }
+
+          // 格式化工具执行结果
+          const resultSummary = toolResults.map(({ toolCall, result }) => {
+            if (result.success) {
+              return `✅ ${toolCall.function.name}: ${result.output}`;
+            } else {
+              return `❌ ${toolCall.function.name}: ${result.error}`;
+            }
+          }).join("\n");
+
+          return {
+            success: true,
+            data: `已完成操作：\n\n${resultSummary}`,
+            cost,
+            apiCalls: 1,
+            model: response.model,
+          };
+        }
+
+        // 没有工具调用，返回文本
         return {
           success: true,
           data: response.content,
