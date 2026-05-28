@@ -115,15 +115,50 @@ export function OrgSidebar() {
 
 function AgentTreeNode({ agent, allAgents, depth }: { agent: Agent; allAgents: Record<AgentId, Agent>; depth: number }) {
   const openAgentDetail = useAppStore((s: AppState) => s.openAgentDetail);
+  const chats = useAppStore((s: AppState) => s.chats);
+  const createChat = useAppStore((s: AppState) => s.createChat);
+  const setActiveChat = useAppStore((s: AppState) => s.setActiveChat);
+  const agents = useAppStore((s: AppState) => s.agents);
+
   const children = agent.childIds.map((id) => allAgents[id]).filter(Boolean);
   const usagePercent = agent.maxChildren > 0 ? Math.round((agent.childIds.length / agent.maxChildren) * 100) : 0;
+
+  // 点击Agent时，切换到与该Agent的对话
+  const handleClick = () => {
+    // 查找是否已存在与该Agent的单聊
+    const existingChat = Object.values(chats).find(
+      (chat) =>
+        chat.type === "direct" &&
+        chat.members.some((m) => m.id === agent.id)
+    );
+
+    if (existingChat) {
+      // 如果已存在，直接切换到该对话
+      setActiveChat(existingChat.id);
+    } else {
+      // 如果不存在，创建新的单聊
+      const newChat = createChat("direct", agent.name, [
+        { id: "user", name: "你", avatar: "user", role: "owner" },
+        { id: agent.id, name: agent.name, avatar: agent.avatar, role: "member" },
+      ]);
+      setActiveChat(newChat.id);
+    }
+  };
+
+  // 右键点击时，打开Agent详情
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    openAgentDetail(agent.id);
+  };
 
   return (
     <div>
       <div
-        onClick={() => openAgentDetail(agent.id)}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
         className="group px-3 py-[7px] flex items-center gap-2 rounded-xl hover:bg-[var(--bg-hover)] transition-all duration-[120ms] cursor-pointer"
         style={{ paddingLeft: `${12 + depth * 14}px` }}
+        title="点击切换对话，右键查看详情"
       >
         <span className={`status-dot status-${agent.status}`} />
         <div className="w-5 h-5 rounded-md glass flex items-center justify-center flex-shrink-0 glass-reflect">
