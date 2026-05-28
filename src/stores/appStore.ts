@@ -12,6 +12,7 @@ import type {
   PluginDefinition, InstalledPlugin, WebhookDefinition, WebhookEventType, WebhookPayload,
   ABExperiment, ABVariant, ABMetric, ABAssignment,
 } from "@/types";
+import { smartSync } from "@/lib/sync/SmartSync";
 
 // ============================================================
 // 默认值工厂
@@ -201,6 +202,9 @@ export const useAppStore = create<AppState>()(
       return { agents };
     });
 
+    // 智能同步到服务端
+    smartSync.trackChange("agent", "create", id, agent);
+
     return agent;
   },
 
@@ -248,6 +252,9 @@ export const useAppStore = create<AppState>()(
 
       return { agents, tasks: s.tasks };
     });
+
+    // 智能同步到服务端
+    smartSync.trackChange("agent", "delete", id);
   },
 
   updateAgent: (id, updates) => {
@@ -260,6 +267,12 @@ export const useAppStore = create<AppState>()(
         },
       };
     });
+
+    // 智能同步到服务端
+    const agent = get().agents[id];
+    if (agent) {
+      smartSync.trackChange("agent", "update", id, agent);
+    }
   },
 
   setParent: (agentId, newParentId, force) => {
@@ -1323,15 +1336,24 @@ export async function loadFromServer(): Promise<boolean> {
     const res = await fetch(SYNC_ENDPOINT);
     if (!res.ok) return false;
     const data = await res.json();
-    if (data.agents) {
-      useAppStore.setState((state: AppState) => ({
-        ...state,
-        // 合并服务端数据到 store（服务端数据优先）
-        agents: data.agents.reduce((acc: Record<AgentId, Agent>, a: Agent) => {
+
+    // 只有当服务端有数据时才合并
+    if (data.agents && Array.isArray(data.agents) && data.agents.length > 0) {
+      useAppStore.setState((state: AppState) => {
+        // 合并服务端数据到 store（服务端数据优先，但保留本地未同步的数据）
+        const serverAgents = data.agents.reduce((acc: Record<AgentId, Agent>, a: Agent) => {
           acc[a.id] = a;
           return acc;
-        }, {} as Record<AgentId, Agent>),
-      }));
+        }, {} as Record<AgentId, Agent>);
+
+        // 合并策略：服务端数据优先，但保留本地独有的数据
+        const mergedAgents = { ...state.agents, ...serverAgents };
+
+        return {
+          ...state,
+          agents: mergedAgents,
+        };
+      });
     }
     return true;
   } catch {

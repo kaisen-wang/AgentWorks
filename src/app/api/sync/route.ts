@@ -110,9 +110,66 @@ export async function GET() {
     const { getDb } = await import("@/lib/db/database");
     const db = getDb();
 
-    const agents = db.prepare("SELECT * FROM agents ORDER BY created_at ASC").all();
+    const rawAgents = db.prepare("SELECT * FROM agents ORDER BY created_at ASC").all() as Record<string, unknown>[];
     const projects = db.prepare("SELECT * FROM projects ORDER BY created_at ASC").all();
-    const tasks = db.prepare("SELECT * FROM tasks ORDER BY created_at ASC").all();
+    const rawTasks = db.prepare("SELECT * FROM tasks ORDER BY created_at ASC").all() as Record<string, unknown>[];
+
+    // 转换Agent数据结构：数据库字段 -> 前端期望的字段
+    const agents = rawAgents.map((a) => {
+      const config = typeof a.config === "string" ? JSON.parse(a.config as string) : a.config || {};
+      const capabilities = typeof a.capability_tags === "string" ? JSON.parse(a.capability_tags as string) : a.capability_tags || [];
+
+      return {
+        id: a.agent_id as string,
+        name: a.name as string,
+        description: (a.description as string) || "",
+        role: (a.role as string) || "specialist",
+        parentId: a.parent_id as string | null,
+        childIds: [] as string[], // 需要从其他Agent计算得出
+        maxChildren: (a.span_of_control_limit as number) || 5,
+        spanExemption: Boolean(a.span_exemption),
+        spanExemptionReason: (a.span_exemption_reason as string) || undefined,
+        capabilities: capabilities as Array<{ name: string; description: string; tools?: string[] }>,
+        config: {
+          model: (a.model as string) || (config.model as string) || "deepseek-v4-flash",
+          temperature: (config.temperature as number) || 0.7,
+          timeout: (config.timeout as number) || 30000,
+          maxRetries: (config.maxRetries as number) || 3,
+          decisionThreshold: (config.decisionThreshold as number) || 5,
+          monthlyBudget: (a.monthly_budget as number) || (config.monthlyBudget as number) || 10,
+          budgetUsed: (a.budget_used as number) || (config.budgetUsed as number) || 0,
+          budgetAlertThreshold: (config.budgetAlertThreshold as number) || 0.9,
+        },
+        status: (a.status as string) || "idle",
+        avatar: (a.avatar_url as string) || "bot",
+        createdAt: a.created_at as number,
+        updatedAt: a.updated_at as number,
+      };
+    });
+
+    // 计算childIds
+    const agentMap = new Map(agents.map((a) => [a.id, a]));
+    for (const agent of agents) {
+      if (agent.parentId && agentMap.has(agent.parentId)) {
+        const parent = agentMap.get(agent.parentId)!;
+        parent.childIds.push(agent.id);
+      }
+    }
+
+    // 转换Task数据结构
+    const tasks = rawTasks.map((t) => ({
+      id: t.task_id,
+      title: t.title,
+      description: t.description || "",
+      assigneeId: t.assignee_id,
+      projectId: t.project_id || null,
+      priority: t.priority || "medium",
+      status: t.status || "pending",
+      chatId: t.chat_id || null,
+      subTasks: [], // 需要从其他Task计算得出
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+    }));
 
     return NextResponse.json({ agents, projects, tasks });
   } catch (dbError) {
