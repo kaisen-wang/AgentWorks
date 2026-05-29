@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAppStore, startAutoSync, stopAutoSync } from "@/stores/appStore";
+import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { OrgSidebar } from "@/components/org/OrgSidebar";
 import { OrgChartView } from "@/components/org/OrgChartView";

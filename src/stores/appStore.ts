@@ -1241,44 +1241,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
 }));
 
 // ============================================================
-// 服务端数据同步（/api/sync 集成）
+// 数据加载（从SQLite API）
 // ============================================================
-
-let syncTimer: ReturnType<typeof setInterval> | null = null;
-const SYNC_INTERVAL = 30_000; // 30 秒同步一次
-const SYNC_ENDPOINT = "/api/sync";
-
-/** 同步数据到服务端 SQLite */
-export async function syncToServer(): Promise<{ synced: boolean; error?: string }> {
-  try {
-    const state = useAppStore.getState();
-    const payload = {
-      agents: Object.values(state.agents),
-      projects: state.projects,
-      tasks: Object.values(state.tasks),
-    };
-
-    const res = await fetch(SYNC_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      return { synced: false, error: `HTTP ${res.status}` };
-    }
-
-    const data = await res.json();
-    return { synced: data.synced !== false };
-  } catch (err) {
-    return { synced: false, error: err instanceof Error ? err.message : "未知错误" };
-  }
-}
 
 /** 从服务端加载数据 */
 export async function loadFromServer(): Promise<boolean> {
   try {
-    const res = await fetch(SYNC_ENDPOINT);
+    const res = await fetch("/api/sync");
     if (!res.ok) return false;
     const data = await res.json();
 
@@ -1338,22 +1307,4 @@ function mergeAgentsWithDedup(
   }
 
   return merged;
-}
-
-/** 启动定时同步 */
-export function startAutoSync(): void {
-  if (syncTimer) return;
-  // 首次加载时从服务端拉取
-  loadFromServer().catch(() => {});
-  syncTimer = setInterval(() => {
-    syncToServer().catch(() => {});
-  }, SYNC_INTERVAL);
-}
-
-/** 停止定时同步 */
-export function stopAutoSync(): void {
-  if (syncTimer) {
-    clearInterval(syncTimer);
-    syncTimer = null;
-  }
 }

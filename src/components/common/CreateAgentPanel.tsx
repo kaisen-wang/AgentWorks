@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { useAppStore, syncToServer } from "@/stores/appStore";
+import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import type { AgentRole, AgentCapability } from "@/types";
 import { PRESET_CAPABILITIES } from "@/lib/capability/CapabilityMatcher";
@@ -92,14 +92,8 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
 
     setActiveChat(chat.id);
     
-    // 立即同步到服务端
-    syncToServer().then(({ synced, error }) => {
-      if (synced) {
-        console.log('✅ [Agent创建] 已同步到服务端', { agentId: result.id, agentName: result.name });
-      } else {
-        console.error('❌ [Agent创建] 同步失败', { error });
-      }
-    });
+    // Agent已通过API创建，无需额外同步
+    console.log('✅ [Agent创建] 完成', { agentId: result.id, agentName: result.name });
     
     onClose();
   };
