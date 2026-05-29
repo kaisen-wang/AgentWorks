@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import type {
   Agent, AgentId, AgentConfig, AgentCapability, AgentRole, ActionStatus,
@@ -152,9 +151,7 @@ export interface AppState {
   closeAgentDetail: () => void;
 }
 
-export const useAppStore = create<AppState>()(
-  persist(
-    (set, get) => ({
+export const useAppStore = create<AppState>()((set, get) => ({
   // ============================================================
   // 组织架构
   // ============================================================
@@ -1241,54 +1238,7 @@ export const useAppStore = create<AppState>()(
       }),
     }));
   },
-}),
-    {
-      name: "agentworks-store",
-      partialize: (state: AppState) => ({
-        agents: state.agents,
-        projects: state.projects,
-        currentProjectId: state.currentProjectId,
-        chats: state.chats,
-        activeChatId: state.activeChatId,
-        messages: state.messages,
-        tasks: state.tasks,
-        archives: state.archives,
-        scripts: state.scripts,
-        knowledge: state.knowledge,
-        externalCollaborators: state.externalCollaborators,
-        auditLogs: state.auditLogs,
-        restMode: state.restMode,
-        installedPlugins: state.installedPlugins,
-        webhooks: state.webhooks,
-        abExperiments: state.abExperiments,
-      }),
-      storage: {
-        getItem: (name: string) => {
-          try {
-            const str = localStorage.getItem(name);
-            return str ? JSON.parse(str) : null;
-          } catch {
-            return null;
-          }
-        },
-        setItem: (name: string, value: unknown) => {
-          try {
-            localStorage.setItem(name, JSON.stringify(value));
-          } catch {
-            console.warn("[AgentWorks] localStorage 容量不足，清除旧数据");
-            try {
-              localStorage.removeItem(name);
-              localStorage.setItem(name, JSON.stringify(value));
-            } catch {
-              console.error("[AgentWorks] localStorage 持久化失败");
-            }
-          }
-        },
-        removeItem: (name: string) => localStorage.removeItem(name),
-      },
-    }
-  )
-);
+}));
 
 // ============================================================
 // 服务端数据同步（/api/sync 集成）

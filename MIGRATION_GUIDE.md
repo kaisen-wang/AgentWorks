@@ -1,22 +1,23 @@
-# localStorage 到 SQLite 迁移指南
+# SQLite 数据存储架构说明
 
 ## 概述
 
-本项目已完成从 localStorage 到 SQLite 的数据存储迁移，实现了更可靠的数据持久化和更好的性能。
+本项目使用 SQLite 作为唯一的数据存储方案，实现了可靠的数据持久化和优秀的性能。
 
-## 架构变更
+## 架构说明
 
-### 之前（localStorage）
-- 使用 Zustand 的 persist 中间件
-- 数据存储在浏览器 localStorage
-- 存在容量限制（~5MB）
-- 数据可能因浏览器清理而丢失
-
-### 现在（SQLite）
+### 数据存储
 - 使用 better-sqlite3 数据库
 - 数据存储在服务端文件 `data/agentworks.db`
 - 无容量限制
 - 数据持久可靠
+- 支持事务和复杂查询
+
+### 前端状态管理
+- 使用 Zustand 进行状态管理
+- 不使用 persist 中间件
+- 数据从 SQLite API 加载
+- 所有写操作通过 API 更新 SQLite
 
 ## 核心组件
 
@@ -26,45 +27,36 @@
 - `ChatRepository` - Chat 数据访问
 - `MessageRepository` - Message 数据访问
 
-### 2. MigrationTool
-- 检测 localStorage 数据
-- 迁移数据到 SQLite
-- 验证数据完整性
-- 支持回滚
-
-### 3. OptimisticUpdateManager
+### 2. OptimisticUpdateManager
 - 管理前端乐观更新
 - API 失败时自动回滚
 - 提升用户体验
 
-### 4. AppInitializer
-- 应用启动时检查迁移
-- 自动执行数据迁移
-- 加载 SQLite 数据
+### 3. AppInitializer
+- 应用启动时从 SQLite 加载数据
+- 提供加载状态和错误处理
 
-## 迁移流程
+## 数据流程
 
-1. **检查阶段**：检测 localStorage 是否有数据
-2. **迁移阶段**：将 localStorage 数据迁移到 SQLite
-3. **验证阶段**：验证迁移数据完整性
-4. **清理阶段**：清空 localStorage
-5. **加载阶段**：从 SQLite 加载数据到前端
+1. **应用启动**：AppInitializer 从 /api/sync 加载数据
+2. **数据展示**：Zustand Store 管理前端状态
+3. **数据更新**：通过 API 更新 SQLite，乐观更新前端状态
+4. **错误处理**：API 失败时回滚前端状态
 
-## API 变更
+## API 架构
 
-### 新增 API
-- `GET /api/migration` - 检查迁移状态
-- `POST /api/migration` - 执行迁移操作
+### 数据查询
+- `GET /api/agents` - 获取所有 Agents
+- `GET /api/tasks` - 获取任务列表（支持过滤）
+- `GET /api/chat` - 获取所有会话
+- `GET /api/messages?chatId=xxx` - 获取消息
+- `GET /api/sync` - 获取所有数据
 
-### 重构 API
-- `/api/agents` - 使用 AgentRepository
-- `/api/tasks` - 使用 TaskRepository
-- `/api/chat` - 使用 ChatRepository
-- `/api/messages` - 使用 MessageRepository
-- `/api/sync` - 简化为纯查询接口
-
-### 删除 API
-- `/api/sync/batch` - 已删除
+### 数据操作
+- `POST /api/agents` - 创建 Agent
+- `PUT /api/agents` - 更新 Agent
+- `DELETE /api/agents?id=xxx` - 删除 Agent
+- 类似的 CRUD 操作用于 tasks、chat、messages
 
 ## 数据库 Schema
 
@@ -74,60 +66,29 @@
 - `conversations` - Chat 数据
 - `messages` - Message 数据
 - `projects` - Project 数据
-
-## 使用说明
-
-### 首次启动
-应用会自动检测并迁移 localStorage 数据，无需手动操作。
-
-### 手动迁移
-```typescript
-import { MigrationTool } from '@/lib/migration/MigrationTool';
-
-const tool = new MigrationTool();
-const localData = tool.checkLocalStorage();
-if (localData) {
-  const result = tool.migrate(localData);
-  console.log('迁移结果:', result);
-}
-```
-
-### 回滚到 localStorage
-```typescript
-const tool = new MigrationTool();
-tool.rollback();
-```
-
-## 注意事项
-
-1. **数据备份**：迁移前建议备份重要数据
-2. **迁移时间**：大量数据迁移可能需要几秒钟
-3. **并发访问**：SQLite 使用 WAL 模式支持并发读
-4. **数据安全**：迁移完成后 localStorage 会被清空
-
-## 待完成任务
-
-- [ ] 重构 Zustand Store（移除 persist 中间件）
-- [ ] 编写单元测试
-- [ ] 编写集成测试
-- [ ] 性能优化
+- `skills` - Skill 数据
+- `tools` - Tool 数据
 
 ## 技术栈
 
 - **better-sqlite3** - SQLite 数据库
-- **Zustand** - 状态管理
+- **Zustand** - 状态管理（无 persist）
 - **Next.js API Routes** - 后端 API
+- **TypeScript** - 类型安全
+
+## 性能优化
+
+1. **数据库索引**：关键字段已建立索引
+2. **Repository 模式**：封装数据访问逻辑
+3. **乐观更新**：提升用户体验
+4. **事务支持**：确保数据一致性
 
 ## 故障排查
 
-### 迁移失败
-1. 检查 localStorage 数据格式
+### 数据加载失败
+1. 检查 data/agentworks.db 文件是否存在
 2. 查看控制台错误日志
-3. 尝试手动迁移
-
-### 数据丢失
-1. 使用 MigrationTool.rollback() 恢复
-2. 检查 data/agentworks.db 文件
+3. 检查 API 响应
 
 ### 性能问题
 1. 检查数据库索引
