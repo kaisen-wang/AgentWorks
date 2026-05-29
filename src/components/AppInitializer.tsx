@@ -6,6 +6,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { syncData } from '@/actions/sync';
 
 interface AppInitializerProps {
   children: React.ReactNode;
@@ -22,16 +23,15 @@ export function AppInitializer({ children }: AppInitializerProps) {
       try {
         // 从SQLite加载数据
         setStatus('loading');
-        const syncRes = await fetch('/api/sync');
-        if (!syncRes.ok) {
-          throw new Error('加载数据失败');
+        const data = await syncData();
+        
+        if (data.error) {
+          throw new Error(data.error);
         }
-
-        const syncData = await syncRes.json();
         
         // 触发全局数据加载事件
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('appDataLoaded', { detail: syncData }));
+          window.dispatchEvent(new CustomEvent('appDataLoaded', { detail: data }));
         }
 
         setStatus('ready');
