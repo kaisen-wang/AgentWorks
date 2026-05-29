@@ -85,17 +85,21 @@ export class SpecialistAgent extends BaseAgent {
 
           // 执行工具调用
           const toolResults: Array<{ toolCall: ToolCall; result: ToolExecutionResult }> = [];
-          
+
           for (const toolCall of response.toolCalls) {
             console.log(`🔧 [${this.name}] 执行工具: ${toolCall.function.name}`);
-            
+
+            // 记录参数长度用于调试
+            const argsLength = toolCall.function.arguments?.length || 0;
+            console.log(`📝 [${this.name}] 参数长度: ${argsLength} 字符`);
+
             const result = await executeToolCall(
               toolCall.function.name,
               toolCall.function.arguments
             );
-            
+
             toolResults.push({ toolCall, result });
-            
+
             console.log(`✅ [${this.name}] 工具执行结果:`, result.success ? result.output : result.error);
           }
 

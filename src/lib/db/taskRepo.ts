@@ -1,10 +1,12 @@
 /**
- * 数据访问层 - Task CRUD（Task 3 + Task 11）
+ * Task 数据访问层
  */
 
-import { getDb } from "./database";
+import Database from 'better-sqlite3';
+import type { TaskId, AgentId, Task, SubTask, TaskStatus, TaskPriority } from '@/types';
 
-export interface TaskRow {
+/** Task 数据库记录 */
+export interface TaskRecord {
   task_id: string;
   title: string;
   description: string;
@@ -22,85 +24,180 @@ export interface TaskRow {
   completed_at: number | null;
 }
 
-/** 创建任务 */
-export function createTask(row: {
-  taskId: string;
-  title: string;
-  description: string;
-  assigneeId: string;
-  parentTaskId?: string | null;
-  projectId?: string | null;
-  priority?: string;
-  chatId?: string | null;
-}): void {
-  const db = getDb();
-  const now = Date.now();
-  db.prepare(`
-    INSERT INTO tasks (task_id, title, description, assignee_id, parent_task_id,
-      project_id, priority, status, chat_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-  `).run(
-    row.taskId, row.title, row.description, row.assigneeId,
-    row.parentTaskId ?? null, row.projectId ?? null,
-    row.priority ?? "medium", row.chatId ?? null, now, now
-  );
+/** TaskRepository 接口 */
+export interface ITaskRepository {
+  findAll(): Task[];
+  findById(id: TaskId): Task | undefined;
+  findByAssignee(assigneeId: AgentId): Task[];
+  findByProject(projectId: string): Task[];
+  findByStatus(status: TaskStatus): Task[];
+  create(task: Task): void;
+  update(task: Task): void;
+  delete(id: TaskId): void;
 }
 
-/** 查询任务 by ID */
-export function getTaskById(taskId: string): TaskRow | null {
-  const db = getDb();
-  return db.prepare("SELECT * FROM tasks WHERE task_id = ?").get(taskId) as TaskRow | null;
-}
+export class TaskRepository implements ITaskRepository {
+  constructor(private db: Database.Database) {}
 
-/** 查询 Agent 的任务队列（按优先级排序） */
-export function getTasksByAssignee(assigneeId: string, projectId?: string | null): TaskRow[] {
-  const db = getDb();
-  if (projectId) {
-    return db.prepare(
-      "SELECT * FROM tasks WHERE assignee_id = ? AND project_id = ? ORDER BY priority DESC, created_at ASC"
-    ).all(assigneeId, projectId) as TaskRow[];
+  /**
+   * 查找所有 Tasks
+   */
+  findAll(): Task[] {
+    const stmt = this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC');
+    const rows = stmt.all() as TaskRecord[];
+    return rows.map(row => this.mapRowToTask(row));
   }
-  return db.prepare(
-    "SELECT * FROM tasks WHERE assignee_id = ? ORDER BY priority DESC, created_at ASC"
-  ).all(assigneeId) as TaskRow[];
-}
 
-/** 查询子任务 */
-export function getSubTasks(parentTaskId: string): TaskRow[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM tasks WHERE parent_task_id = ? ORDER BY created_at ASC").all(parentTaskId) as TaskRow[];
-}
+  /**
+   * 根据 ID 查找 Task
+   */
+  findById(id: TaskId): Task | undefined {
+    const stmt = this.db.prepare('SELECT * FROM tasks WHERE task_id = ?');
+    const row = stmt.get(id) as TaskRecord | undefined;
+    return row ? this.mapRowToTask(row) : undefined;
+  }
 
-/** 更新任务状态 */
-export function updateTaskStatus(taskId: string, status: string, completedAt?: number): void {
-  const db = getDb();
-  db.prepare("UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE task_id = ?")
-    .run(status, Date.now(), completedAt ?? null, taskId);
-}
+  /**
+   * 根据执行者查找 Tasks
+   */
+  findByAssignee(assigneeId: AgentId): Task[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM tasks 
+      WHERE assignee_id = ? 
+      ORDER BY priority DESC, created_at ASC
+    `);
+    const rows = stmt.all(assigneeId) as TaskRecord[];
+    return rows.map(row => this.mapRowToTask(row));
+  }
 
-/** 更新任务优先级 */
-export function updateTaskPriority(taskId: string, priority: string): void {
-  const db = getDb();
-  db.prepare("UPDATE tasks SET priority = ?, updated_at = ? WHERE task_id = ?").run(priority, Date.now(), taskId);
-}
+  /**
+   * 根据项目查找 Tasks
+   */
+  findByProject(projectId: string): Task[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM tasks 
+      WHERE project_id = ? 
+      ORDER BY created_at DESC
+    `);
+    const rows = stmt.all(projectId) as TaskRecord[];
+    return rows.map(row => this.mapRowToTask(row));
+  }
 
-/** 重分配任务 */
-export function reassignTask(taskId: string, newAssigneeId: string): void {
-  const db = getDb();
-  db.prepare("UPDATE tasks SET assignee_id = ?, updated_at = ? WHERE task_id = ?").run(newAssigneeId, Date.now(), taskId);
-}
+  /**
+   * 根据状态查找 Tasks
+   */
+  findByStatus(status: TaskStatus): Task[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM tasks 
+      WHERE status = ? 
+      ORDER BY created_at DESC
+    `);
+    const rows = stmt.all(status) as TaskRecord[];
+    return rows.map(row => this.mapRowToTask(row));
+  }
 
-/** 保存 checkpoint（挂起时） */
-export function saveCheckpoint(taskId: string, checkpoint: unknown): void {
-  const db = getDb();
-  db.prepare("UPDATE tasks SET checkpoint = ?, status = 'suspended', updated_at = ? WHERE task_id = ?")
-    .run(JSON.stringify(checkpoint), Date.now(), taskId);
-}
+  /**
+   * 创建 Task
+   */
+  create(task: Task): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO tasks (
+        task_id, title, description, assignee_id, parent_task_id,
+        project_id, priority, status, timeout_seconds, retry_count,
+        checkpoint, chat_id, created_at, updated_at, completed_at
+      ) VALUES (
+        @taskId, @title, @description, @assigneeId, @parentTaskId,
+        @projectId, @priority, @status, @timeoutSeconds, @retryCount,
+        @checkpoint, @chatId, @createdAt, @updatedAt, @completedAt
+      )
+    `);
 
-/** 增加重试计数 */
-export function incrementRetryCount(taskId: string): number {
-  const db = getDb();
-  db.prepare("UPDATE tasks SET retry_count = retry_count + 1, updated_at = ? WHERE task_id = ?").run(Date.now(), taskId);
-  const row = db.prepare("SELECT retry_count FROM tasks WHERE task_id = ?").get(taskId) as { retry_count: number } | null;
-  return row?.retry_count ?? 0;
+    const record = this.mapTaskToRecord(task);
+    stmt.run(record);
+  }
+
+  /**
+   * 更新 Task
+   */
+  update(task: Task): void {
+    const stmt = this.db.prepare(`
+      UPDATE tasks SET
+        title = @title,
+        description = @description,
+        assignee_id = @assigneeId,
+        parent_task_id = @parentTaskId,
+        project_id = @projectId,
+        priority = @priority,
+        status = @status,
+        timeout_seconds = @timeoutSeconds,
+        retry_count = @retryCount,
+        checkpoint = @checkpoint,
+        chat_id = @chatId,
+        updated_at = @updatedAt,
+        completed_at = @completedAt
+      WHERE task_id = @taskId
+    `);
+
+    const record = {
+      ...this.mapTaskToRecord(task),
+      updatedAt: Date.now(),
+    };
+    stmt.run(record);
+  }
+
+  /**
+   * 删除 Task
+   */
+  delete(id: TaskId): void {
+    const stmt = this.db.prepare('DELETE FROM tasks WHERE task_id = ?');
+    stmt.run(id);
+  }
+
+  /**
+   * 映射数据库行到 Task 对象
+   */
+  private mapRowToTask(row: TaskRecord): Task {
+    // 解析 checkpoint 字段获取子任务
+    const subTasks: SubTask[] = row.checkpoint 
+      ? JSON.parse(row.checkpoint) 
+      : [];
+
+    return {
+      id: row.task_id,
+      title: row.title,
+      description: row.description,
+      assigneeId: row.assignee_id,
+      subTasks,
+      status: row.status as TaskStatus,
+      priority: row.priority as TaskPriority,
+      projectId: row.project_id || undefined,
+      chatId: row.chat_id || '',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at || undefined,
+    };
+  }
+
+  /**
+   * 映射 Task 对象到数据库记录
+   */
+  private mapTaskToRecord(task: Task): any {
+    return {
+      taskId: task.id,
+      title: task.title,
+      description: task.description,
+      assigneeId: task.assigneeId,
+      parentTaskId: null, // 暂不支持父任务
+      projectId: task.projectId || null,
+      priority: task.priority,
+      status: task.status,
+      timeoutSeconds: 30,
+      retryCount: 0,
+      checkpoint: JSON.stringify(task.subTasks),
+      chatId: task.chatId || null,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      completedAt: task.completedAt || null,
+    };
+  }
 }

@@ -2,9 +2,12 @@
  * Agent工具定义和执行器
  * 
  * 为Agent提供可用的工具定义和执行逻辑
+ * 
+ * 注意：文件操作使用 Server Actions 在服务器端执行
  */
 
 import type { ToolDefinition } from "@/lib/llm/LLMService";
+import { writeFileContent, readFileContent } from "@/actions/file-actions";
 
 /**
  * 获取Agent可用的工具定义
@@ -111,7 +114,25 @@ export async function executeToolCall(
   argumentsJson: string
 ): Promise<ToolExecutionResult> {
   try {
-    const args = JSON.parse(argumentsJson);
+    // 尝试解析 JSON，如果失败则提供详细错误信息
+    let args;
+    try {
+      args = JSON.parse(argumentsJson);
+    } catch (parseError) {
+      const errorPos = parseError instanceof Error ? 
+        parseError.message.match(/position (\d+)/)?.[1] : 'unknown';
+      
+      console.error('❌ [JSON Parse Error] 详细信息:');
+      console.error('- 错误:', parseError instanceof Error ? parseError.message : String(parseError));
+      console.error('- JSON 总长度:', argumentsJson.length);
+      console.error('- 错误位置:', errorPos);
+      console.error('- argumentsJson:', argumentsJson);
+      
+      return {
+        success: false,
+        error: `JSON解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}。JSON长度: ${argumentsJson.length}，错误位置: ${errorPos}`,
+      };
+    }
 
     switch (toolName) {
       case "write_file":
@@ -145,22 +166,20 @@ export async function executeToolCall(
  */
 async function executeWriteFile(filePath: string, content: string): Promise<ToolExecutionResult> {
   try {
-    // 使用相对路径，在项目的output目录下创建文件
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    // 确保output目录存在
-    const outputDir = path.join(process.cwd(), "output");
-    await fs.mkdir(outputDir, { recursive: true });
-
-    // 写入文件
-    const fullPath = path.join(outputDir, filePath);
-    await fs.writeFile(fullPath, content, "utf-8");
-
-    return {
-      success: true,
-      output: `文件已创建: output/${filePath}`,
-    };
+    // 使用 Server Action 写入文件到 output 目录
+    const result = await writeFileContent(`output/${filePath}`, content);
+    
+    if (result.success) {
+      return {
+        success: true,
+        output: `文件已创建: output/${filePath}`,
+      };
+    } else {
+      return {
+        success: false,
+        error: result.error || "写文件失败",
+      };
+    }
   } catch (error) {
     return {
       success: false,
@@ -174,16 +193,20 @@ async function executeWriteFile(filePath: string, content: string): Promise<Tool
  */
 async function executeReadFile(filePath: string): Promise<ToolExecutionResult> {
   try {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const fullPath = path.join(process.cwd(), filePath);
-    const content = await fs.readFile(fullPath, "utf-8");
-
-    return {
-      success: true,
-      output: content,
-    };
+    // 使用 Server Action 读取文件
+    const result = await readFileContent(filePath);
+    
+    if (result.success) {
+      return {
+        success: true,
+        output: result.data,
+      };
+    } else {
+      return {
+        success: false,
+        error: result.error || "读文件失败",
+      };
+    }
   } catch (error) {
     return {
       success: false,
@@ -201,12 +224,18 @@ async function executeEditFile(
   newContent: string
 ): Promise<ToolExecutionResult> {
   try {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const fullPath = path.join(process.cwd(), filePath);
-    let content = await fs.readFile(fullPath, "utf-8");
-
+    // 先读取文件
+    const readResult = await readFileContent(filePath);
+    
+    if (!readResult.success) {
+      return {
+        success: false,
+        error: readResult.error || "读取文件失败",
+      };
+    }
+    
+    let content = readResult.data!;
+    
     // 替换内容
     if (!content.includes(oldContent)) {
       return {
@@ -214,14 +243,23 @@ async function executeEditFile(
         error: "未找到要替换的内容",
       };
     }
-
+    
     content = content.replace(oldContent, newContent);
-    await fs.writeFile(fullPath, content, "utf-8");
-
-    return {
-      success: true,
-      output: `文件已更新: ${filePath}`,
-    };
+    
+    // 写回文件
+    const writeResult = await writeFileContent(filePath, content);
+    
+    if (writeResult.success) {
+      return {
+        success: true,
+        output: `文件已更新: ${filePath}`,
+      };
+    } else {
+      return {
+        success: false,
+        error: writeResult.error || "写入文件失败",
+      };
+    }
   } catch (error) {
     return {
       success: false,
@@ -232,8 +270,17 @@ async function executeEditFile(
 
 /**
  * 执行命令（受限）
+ * 注意：命令执行只能在服务器端进行
  */
 async function executeRunCommand(command: string): Promise<ToolExecutionResult> {
+  // 检查是否在服务器端
+  if (typeof window !== 'undefined') {
+    return {
+      success: false,
+      error: "命令执行只在服务器端可用",
+    };
+  }
+
   // 安全检查：只允许特定命令
   const allowedCommands = [
     "npm install",

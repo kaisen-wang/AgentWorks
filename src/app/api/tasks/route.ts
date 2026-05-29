@@ -1,31 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/lib/db/database";
+import { TaskRepository } from "@/lib/db/taskRepo";
+import { v4 as uuidv4 } from "uuid";
+import type { Task, TaskPriority, TaskStatus } from "@/types";
 
-// Tasks API Routes - 任务管理，操作 SQLite
-
+/**
+ * GET /api/tasks - 获取任务列表
+ */
 export async function GET(request: NextRequest) {
-  const assigneeId = request.nextUrl.searchParams.get("assigneeId");
-  const projectId = request.nextUrl.searchParams.get("projectId");
-
   try {
-    const { getTasksByAssignee } = await import("@/lib/db/taskRepo");
-    if (assigneeId) {
-      const tasks = getTasksByAssignee(assigneeId, projectId || null);
-      return NextResponse.json({ tasks });
-    }
-    // 无 assigneeId 时返回所有任务
-    const { getDb } = await import("@/lib/db/database");
+    const assigneeId = request.nextUrl.searchParams.get("assigneeId");
+    const projectId = request.nextUrl.searchParams.get("projectId");
+    const status = request.nextUrl.searchParams.get("status");
+
     const db = getDb();
-    const tasks = db.prepare("SELECT * FROM tasks ORDER BY priority DESC, created_at ASC").all();
+    const repo = new TaskRepository(db);
+
+    let tasks: Task[];
+
+    if (assigneeId) {
+      tasks = repo.findByAssignee(assigneeId);
+    } else if (projectId) {
+      tasks = repo.findByProject(projectId);
+    } else if (status) {
+      tasks = repo.findByStatus(status as TaskStatus);
+    } else {
+      tasks = repo.findAll();
+    }
+
     return NextResponse.json({ tasks });
-  } catch {
-    return NextResponse.json({ tasks: [], fallback: true });
+  } catch (error) {
+    console.error("获取任务失败:", error);
+    return NextResponse.json({ tasks: [], error: "数据库错误" }, { status: 500 });
   }
 }
 
+/**
+ * POST /api/tasks - 创建任务
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, description, assigneeId, chatId, priority, deadline, taskId, projectId } = body;
+    const { title, description, assigneeId, chatId, priority = "medium", projectId } = body;
 
     if (!title || !assigneeId || !chatId) {
       return NextResponse.json(
@@ -34,64 +50,92 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    try {
-      const { createTask } = await import("@/lib/db/taskRepo");
-      const id = taskId || `task_${Date.now()}`;
-      createTask({
-        taskId: id,
-        title,
-        description: description || "",
-        assigneeId,
-        projectId: projectId || null,
-        priority: priority || "medium",
-        chatId,
-      });
+    const db = getDb();
+    const repo = new TaskRepository(db);
 
-      return NextResponse.json({ success: true, taskId: id });
-    } catch {
-      return NextResponse.json({
-        action: "create_task",
-        data: { title, description: description || "", assigneeId, chatId, priority: priority || "medium", deadline },
-        fallback: true,
-      });
-    }
-  } catch {
-    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+    const now = Date.now();
+    const task: Task = {
+      id: uuidv4(),
+      title,
+      description: description || "",
+      assigneeId,
+      subTasks: [],
+      status: "pending",
+      priority: priority as TaskPriority,
+      projectId: projectId || undefined,
+      chatId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    repo.create(task);
+
+    return NextResponse.json({ success: true, task });
+  } catch (error) {
+    console.error("创建任务失败:", error);
+    return NextResponse.json({ error: "创建失败" }, { status: 500 });
   }
 }
 
-export async function PATCH(request: NextRequest) {
+/**
+ * PUT /api/tasks - 更新任务
+ */
+export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { taskId, status, priority, assigneeId } = body;
+    const { id, updates } = body;
 
-    if (!taskId) {
-      return NextResponse.json({ error: "缺少 taskId" }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: "缺少任务 ID" }, { status: 400 });
     }
 
-    try {
-      const { updateTaskStatus, updateTaskPriority, reassignTask } = await import("@/lib/db/taskRepo");
+    const db = getDb();
+    const repo = new TaskRepository(db);
+    const existing = repo.findById(id);
 
-      if (status) {
-        const completedAt = (status === "completed" || status === "failed") ? Date.now() : undefined;
-        updateTaskStatus(taskId, status, completedAt);
-      }
-      if (priority) {
-        updateTaskPriority(taskId, priority);
-      }
-      if (assigneeId) {
-        reassignTask(taskId, assigneeId);
-      }
-
-      return NextResponse.json({ success: true, taskId });
-    } catch {
-      return NextResponse.json({
-        action: "update_task",
-        data: { taskId, status, priority, assigneeId },
-        fallback: true,
-      });
+    if (!existing) {
+      return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
-  } catch {
-    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+
+    const updated = {
+      ...existing,
+      ...updates,
+      updatedAt: Date.now(),
+    };
+
+    // 如果状态变为 completed 或 failed，设置 completedAt
+    if (updates.status && (updates.status === "completed" || updates.status === "failed")) {
+      updated.completedAt = Date.now();
+    }
+
+    repo.update(updated);
+
+    return NextResponse.json({ success: true, task: updated });
+  } catch (error) {
+    console.error("更新任务失败:", error);
+    return NextResponse.json({ error: "更新失败" }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/tasks - 删除任务
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "缺少任务 ID" }, { status: 400 });
+    }
+
+    const db = getDb();
+    const repo = new TaskRepository(db);
+    repo.delete(id);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("删除任务失败:", error);
+    return NextResponse.json({ error: "删除失败" }, { status: 500 });
   }
 }

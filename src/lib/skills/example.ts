@@ -7,7 +7,7 @@ import type { SkillDefinition, ToolDefinition } from '@/types';
 
 async function main() {
   // 创建管理器
-  const manager = createSkillsToolsManager();
+  const manager = await createSkillsToolsManager();
 
   // ============================================
   // 示例 1: 注册全局 Tool

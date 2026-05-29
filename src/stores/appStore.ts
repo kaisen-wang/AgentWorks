@@ -12,7 +12,6 @@ import type {
   PluginDefinition, InstalledPlugin, WebhookDefinition, WebhookEventType, WebhookPayload,
   ABExperiment, ABVariant, ABMetric, ABAssignment,
 } from "@/types";
-import { smartSync } from "@/lib/sync/SmartSync";
 
 // ============================================================
 // 默认值工厂
@@ -202,8 +201,7 @@ export const useAppStore = create<AppState>()(
       return { agents };
     });
 
-    // 智能同步到服务端
-    smartSync.trackChange("agent", "create", id, agent);
+    // 已移除SmartSync，数据直接存储到SQLite
 
     return agent;
   },
@@ -253,8 +251,7 @@ export const useAppStore = create<AppState>()(
       return { agents, tasks: s.tasks };
     });
 
-    // 智能同步到服务端
-    smartSync.trackChange("agent", "delete", id);
+    // 已移除SmartSync，数据直接存储到SQLite
   },
 
   updateAgent: (id, updates) => {
@@ -268,11 +265,9 @@ export const useAppStore = create<AppState>()(
       };
     });
 
-    // 智能同步到服务端
+    // 已移除SmartSync，数据直接存储到SQLite
     const agent = get().agents[id];
-    if (agent) {
-      smartSync.trackChange("agent", "update", id, agent);
-    }
+    // 已移除SmartSync，数据直接存储到SQLite
   },
 
   setParent: (agentId, newParentId, force) => {
@@ -1340,14 +1335,8 @@ export async function loadFromServer(): Promise<boolean> {
     // 只有当服务端有数据时才合并
     if (data.agents && Array.isArray(data.agents) && data.agents.length > 0) {
       useAppStore.setState((state: AppState) => {
-        // 合并服务端数据到 store（服务端数据优先，但保留本地未同步的数据）
-        const serverAgents = data.agents.reduce((acc: Record<AgentId, Agent>, a: Agent) => {
-          acc[a.id] = a;
-          return acc;
-        }, {} as Record<AgentId, Agent>);
-
-        // 合并策略：服务端数据优先，但保留本地独有的数据
-        const mergedAgents = { ...state.agents, ...serverAgents };
+        // 使用智能合并策略，根据 name+role 去重
+        const mergedAgents = mergeAgentsWithDedup(state.agents, data.agents);
 
         return {
           ...state,
@@ -1359,6 +1348,46 @@ export async function loadFromServer(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * 合并 Agent 数据并去重
+ * 根据 name + role 进行去重，服务端数据优先
+ */
+function mergeAgentsWithDedup(
+  localAgents: Record<AgentId, Agent>,
+  serverAgents: Agent[]
+): Record<AgentId, Agent> {
+  const merged: Record<AgentId, Agent> = {};
+
+  // 创建服务端数据的映射（按 name+role）
+  const serverAgentMap = new Map<string, Agent>();
+  for (const agent of serverAgents) {
+    const key = `${agent.name}_${agent.role}`;
+    serverAgentMap.set(key, agent);
+  }
+
+  // 创建本地数据的映射（按 name+role）
+  const localAgentMap = new Map<string, Agent>();
+  for (const agent of Object.values(localAgents)) {
+    const key = `${agent.name}_${agent.role}`;
+    localAgentMap.set(key, agent);
+  }
+
+  // 合并策略：服务端数据优先
+  // 1. 先添加所有服务端数据
+  for (const agent of serverAgents) {
+    merged[agent.id] = agent;
+  }
+
+  // 2. 添加本地独有的数据（服务端没有的 name+role 组合）
+  for (const [key, agent] of localAgentMap) {
+    if (!serverAgentMap.has(key)) {
+      merged[agent.id] = agent;
+    }
+  }
+
+  return merged;
 }
 
 /** 启动定时同步 */

@@ -44,6 +44,8 @@ function initializeSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS agents (
       agent_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'specialist',
+      description TEXT,
       model TEXT NOT NULL,
       parent_id TEXT,
       path TEXT NOT NULL DEFAULT '/',
@@ -302,12 +304,14 @@ function migrateAgentsNameUnique(db: Database.Database): void {
       db.prepare("DELETE FROM agents WHERE agent_id IN (?, ?)").run(testId1, testId2);
     }
 
-    // 重建 agents 表，移除 name 的 UNIQUE 约束
+    // 重建 agents 表，移除 name 的 UNIQUE 约束，添加 role 和 description 字段
     db.exec(`
       ALTER TABLE agents RENAME TO agents_old;
       CREATE TABLE agents (
         agent_id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'specialist',
+        description TEXT,
         model TEXT NOT NULL,
         parent_id TEXT,
         path TEXT NOT NULL DEFAULT '/',
@@ -323,7 +327,9 @@ function migrateAgentsNameUnique(db: Database.Database): void {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
-      INSERT INTO agents SELECT * FROM agents_old;
+      INSERT INTO agents (agent_id, name, role, description, model, parent_id, path, span_of_control_limit, span_exemption, span_exemption_reason, capability_tags, monthly_budget, budget_used, status, avatar_url, config, created_at, updated_at)
+      SELECT agent_id, name, 'specialist', NULL, model, parent_id, path, span_of_control_limit, span_exemption, span_exemption_reason, capability_tags, monthly_budget, budget_used, status, avatar_url, config, created_at, updated_at
+      FROM agents_old;
       DROP TABLE agents_old;
     `);
   } catch {

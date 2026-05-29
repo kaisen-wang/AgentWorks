@@ -6,8 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSkillsToolsManager } from '@/lib/skills';
 
-const manager = createSkillsToolsManager();
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -25,6 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 执行 Tool
+    const manager = await createSkillsToolsManager();
     const result = await manager.toolExecutor.execute(
       toolId,
       params || {},

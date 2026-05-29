@@ -3,6 +3,7 @@ node_modules/
 .codeartsdoer/
 .next/
 .vscode/
+.agents/
 data/
 
 .env.local

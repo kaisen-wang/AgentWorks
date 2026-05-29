@@ -5,4 +5,4 @@ export {
   buildDecomposeUserPrompt,
   parseDecompositionResponse,
 } from "./LLMService";
-export type { LLMConfig, DecompositionResult } from "./LLMService";
+export type { LLMConfig, DecompositionResult, ToolDefinition, ToolCall } from "./LLMService";

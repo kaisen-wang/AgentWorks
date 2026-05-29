@@ -5,8 +5,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSkillsToolsManager } from '@/lib/skills';
 
-const manager = createSkillsToolsManager();
-
 /**
  * POST /api/tools - 注册 Tool
  */
@@ -47,6 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 注册 Tool
+    const manager = await createSkillsToolsManager();
     await manager.toolRegistry.register(definition, scope, agentId);
 
     return NextResponse.json({
@@ -83,6 +82,8 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const manager = await createSkillsToolsManager();
 
     // 查找特定 Tool
     if (toolId) {
@@ -163,6 +164,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 注销 Tool
+    const manager = await createSkillsToolsManager();
     await manager.toolRegistry.unregister(toolId, scope, agentId || undefined);
 
     return NextResponse.json({

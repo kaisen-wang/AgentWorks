@@ -31,8 +31,8 @@ export interface LLMConfig {
 
 const DEFAULT_CONFIG: Partial<LLMConfig> = {
   temperature: 0.7,
-  maxTokens: 2048,
-  timeout: 30000,
+  maxTokens: 8192, // 增加到 8192 以支持生成大型文件
+  timeout: 60000, // 增加超时时间到 60 秒
 };
 
 // ============================================================
@@ -46,7 +46,7 @@ interface ChatMessage {
   tool_call_id?: string; // for tool messages
 }
 
-interface ToolDefinition {
+export interface ToolDefinition {
   type: "function";
   function: {
     name: string;
@@ -59,7 +59,7 @@ interface ToolDefinition {
   };
 }
 
-interface ToolCall {
+export interface ToolCall {
   id: string;
   type: "function";
   function: {
@@ -184,15 +184,38 @@ export async function callLLM(
     const data = await response.json();
     const message = data.choices?.[0]?.message;
 
+    // 打印完整的 LLM 响应用于调试
+    console.log('📊 [LLM Response] 完整响应数据:');
+    console.log('- Content length:', message?.content?.length || 0);
+    console.log('- Tool calls count:', message?.tool_calls?.length || 0);
+    
+    if (message?.tool_calls && message.tool_calls.length > 0) {
+      message.tool_calls.forEach((tc: any, index: number) => {
+        console.log(`- Tool call ${index + 1}: ${tc.function.name}`);
+        console.log(`  - Arguments length: ${tc.function.arguments?.length || 0}`);
+        console.log(`  - Arguments preview:`, tc.function.arguments);
+      });
+    }
+
     // 解析工具调用
-    const toolCalls: ToolCall[] | undefined = message?.tool_calls?.map((tc: any) => ({
-      id: tc.id,
-      type: tc.type,
-      function: {
-        name: tc.function.name,
-        arguments: tc.function.arguments,
-      },
-    }));
+    const toolCalls: ToolCall[] | undefined = message?.tool_calls?.map((tc: any) => {
+      // 验证 arguments 是否是有效的 JSON 字符串
+      let args = tc.function.arguments;
+
+      // 如果 arguments 不是字符串，尝试转换为 JSON
+      if (typeof args !== 'string') {
+        args = JSON.stringify(args);
+      }
+
+      return {
+        id: tc.id,
+        type: tc.type,
+        function: {
+          name: tc.function.name,
+          arguments: args,
+        },
+      };
+    });
 
     return {
       content: message?.content || "",

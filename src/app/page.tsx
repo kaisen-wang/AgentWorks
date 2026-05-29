@@ -14,7 +14,6 @@ import { RestModePanel } from "@/components/common/RestModePanel";
 import { CreateAgentPanel } from "@/components/common/CreateAgentPanel";
 import { AgentDetailPanel } from "@/components/common/AgentDetailPanel";
 import { SyncStatusIndicator } from "@/components/common/SyncStatusIndicator";
-import { useSmartDataLoad } from "@/lib/hooks/useSmartDataLoad";
 
 export default function HomePage() {
   const activeChatId = useAppStore((s: AppState) => s.activeChatId);
@@ -33,14 +32,8 @@ export default function HomePage() {
   const [showScript, setShowScript] = useState(false);
   const [showRestMode, setShowRestMode] = useState(false);
 
-  // 智能数据加载
-  const { isLoading, isFromCache } = useSmartDataLoad();
-
-  // 启动服务端数据自动同步（作为备份）
-  useEffect(() => {
-    startAutoSync();
-    return () => stopAutoSync();
-  }, []);
+  // 数据加载状态
+  const [isLoading, setIsLoading] = useState(false);
 
   const agentCount = Object.keys(agents).length;
 
@@ -88,16 +81,6 @@ export default function HomePage() {
 
       {/* 同步状态指示器 */}
       <SyncStatusIndicator />
-
-      {/* 从缓存加载提示 */}
-      {isFromCache && (
-        <div className="fixed bottom-4 right-4 z-50 glass-medium rounded-lg px-3 py-2 shadow-lg animate-slide-up">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-[11px] text-[var(--text-secondary)]">正在同步最新数据...</span>
-          </div>
-        </div>
-      )}
 
       {/* Top bar — glass surface */}
       <header className="h-11 glass-surface flex items-center px-4 relative z-10 glass-reflect">
