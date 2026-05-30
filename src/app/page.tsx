@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAppStore } from "@/stores/appStore";
+import { useAppStore, loadFromServer } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { OrgSidebar } from "@/components/org/OrgSidebar";
 import { OrgChartView } from "@/components/org/OrgChartView";
@@ -34,6 +34,21 @@ export default function HomePage() {
 
   // 数据加载状态
   const [isLoading, setIsLoading] = useState(false);
+
+  // 应用启动时从数据库加载数据
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        await loadFromServer();
+      } catch (error) {
+        console.error("加载数据失败:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
   const agentCount = Object.keys(agents).length;
 

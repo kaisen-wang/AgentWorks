@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db/database";
-import { initializeDatabase } from "@/lib/db/init";
 import { AgentRepository } from "@/lib/db/agentRepo";
 import { TaskRepository } from "@/lib/db/taskRepo";
 import { ChatRepository } from "@/lib/db/chatRepo";
@@ -11,9 +10,6 @@ import { ChatRepository } from "@/lib/db/chatRepo";
  */
 export async function GET() {
   try {
-    // 确保数据库已初始化
-    initializeDatabase();
-    
     const db = getDb();
     const agentRepo = new AgentRepository(db);
     const taskRepo = new TaskRepository(db);
@@ -27,20 +23,20 @@ export async function GET() {
     // 获取项目列表
     const projects = db.prepare("SELECT * FROM projects ORDER BY created_at ASC").all();
 
-    return NextResponse.json({ 
-      agents, 
-      projects, 
+    return NextResponse.json({
+      agents,
+      projects,
       tasks,
-      chats 
+      chats
     });
   } catch (error) {
     console.error("获取同步数据失败:", error);
-    return NextResponse.json({ 
-      agents: [], 
-      projects: [], 
+    return NextResponse.json({
+      agents: [],
+      projects: [],
       tasks: [],
       chats: [],
-      error: "数据库错误" 
+      error: "数据库错误"
     }, { status: 500 });
   }
 }
