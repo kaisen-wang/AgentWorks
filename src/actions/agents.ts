@@ -6,7 +6,6 @@
  */
 
 import { getDb } from '@/lib/db/database';
-import { initializeDatabase } from '@/lib/db/init';
 import { AgentRepository } from '@/lib/db/agentRepo';
 import { v4 as uuidv4 } from 'uuid';
 import type { Agent, AgentCapability, AgentConfig, AgentRole } from '@/types';
@@ -27,7 +26,6 @@ const defaultAgentConfig = (): AgentConfig => ({
  */
 export async function getAgents(): Promise<{ agents: Agent[]; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new AgentRepository(db);
     const agents = repo.findAll();
@@ -50,7 +48,6 @@ export async function createAgent(data: {
   description?: string;
 }): Promise<{ agent?: Agent; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new AgentRepository(db);
 
@@ -103,7 +100,6 @@ export async function updateAgent(data: {
   updates: Partial<Agent>;
 }): Promise<{ agent?: Agent; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new AgentRepository(db);
     const existing = repo.findById(data.id);
@@ -131,7 +127,6 @@ export async function updateAgent(data: {
  */
 export async function deleteAgent(id: string): Promise<{ success: boolean; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new AgentRepository(db);
     repo.delete(id);

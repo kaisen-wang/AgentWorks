@@ -6,7 +6,6 @@
  */
 
 import { getDb } from '@/lib/db/database';
-import { initializeDatabase } from '@/lib/db/init';
 import { AgentRepository } from '@/lib/db/agentRepo';
 import { TaskRepository } from '@/lib/db/taskRepo';
 import { ChatRepository } from '@/lib/db/chatRepo';
@@ -22,7 +21,6 @@ export async function syncData(): Promise<{
   error?: string;
 }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const agentRepo = new AgentRepository(db);
     const taskRepo = new TaskRepository(db);

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db/database";
-import { initializeDatabase } from "@/lib/db/init";
 import { AgentRepository } from "@/lib/db/agentRepo";
 import { v4 as uuidv4 } from "uuid";
 import type { Agent, AgentCapability, AgentConfig, AgentRole } from "@/types";
@@ -21,7 +20,6 @@ const defaultAgentConfig = (): AgentConfig => ({
  */
 export async function GET() {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new AgentRepository(db);
     const agents = repo.findAll();
@@ -37,7 +35,6 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    initializeDatabase();
     const body = await request.json();
     const { name, role, parentId, capabilities = [], config, description = "" } = body;
 

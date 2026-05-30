@@ -6,7 +6,6 @@
  */
 
 import { getDb } from '@/lib/db/database';
-import { initializeDatabase } from '@/lib/db/init';
 import { TaskRepository } from '@/lib/db/taskRepo';
 import { v4 as uuidv4 } from 'uuid';
 import type { Task, TaskPriority, TaskStatus } from '@/types';
@@ -20,7 +19,6 @@ export async function getTasks(filters?: {
   status?: TaskStatus;
 }): Promise<{ tasks: Task[]; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new TaskRepository(db);
 
@@ -55,7 +53,6 @@ export async function createTask(data: {
   projectId?: string;
 }): Promise<{ task?: Task; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new TaskRepository(db);
 
@@ -90,7 +87,6 @@ export async function updateTask(data: {
   updates: Partial<Task>;
 }): Promise<{ task?: Task; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new TaskRepository(db);
     const existing = repo.findById(data.id);
@@ -123,7 +119,6 @@ export async function updateTask(data: {
  */
 export async function deleteTask(id: string): Promise<{ success: boolean; error?: string }> {
   try {
-    initializeDatabase();
     const db = getDb();
     const repo = new TaskRepository(db);
     repo.delete(id);
