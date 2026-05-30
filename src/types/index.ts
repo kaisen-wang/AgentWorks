@@ -810,3 +810,202 @@ export interface MemoryStore {
   delete(key: string): Promise<void>;
   clear(): Promise<void>;
 }
+
+// ============================================================
+// Skill 安装相关类型定义
+// ============================================================
+
+/** 安装日志 */
+export interface InstallLog {
+  installId: string;
+  resourceType: 'skill' | 'tool';
+  resourceId: string;
+  agentId: AgentId;
+  sourceUrl: string;
+  scope: ResourceScope;
+  status: 'in_progress' | 'completed' | 'failed' | 'rolled_back';
+  step: string;
+  errorMessage?: string;
+  errorDetails?: string;
+  durationMs: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 安装请求 */
+export interface InstallSkillRequest {
+  url: string;
+  scope?: ResourceScope;
+  agentId: AgentId;
+  options?: InstallOptions;
+}
+
+/** 安装选项 */
+export interface InstallOptions {
+  autoInstallDependencies?: boolean;
+  downloadTimeout?: number;
+  maxRetries?: number;
+  skipValidation?: boolean;
+}
+
+/** 安装结果 */
+export interface InstallResult {
+  success: boolean;
+  installId: string;
+  skillId?: string;
+  error?: InstallError;
+}
+
+/** 安装错误 */
+export interface InstallError {
+  code: InstallErrorCode;
+  message: string;
+  details?: unknown;
+}
+
+/** 安装错误码 */
+export enum InstallErrorCode {
+  INVALID_URL = 'INVALID_URL',
+  URL_NOT_ACCESSIBLE = 'URL_NOT_ACCESSIBLE',
+  SSRF_BLOCKED = 'SSRF_BLOCKED',
+  DOWNLOAD_FAILED = 'DOWNLOAD_FAILED',
+  DOWNLOAD_TIMEOUT = 'DOWNLOAD_TIMEOUT',
+  DOWNLOAD_SIZE_EXCEEDED = 'DOWNLOAD_SIZE_EXCEEDED',
+  VALIDATION_FAILED = 'VALIDATION_FAILED',
+  INVALID_PACKAGE_STRUCTURE = 'INVALID_PACKAGE_STRUCTURE',
+  SECURITY_CHECK_FAILED = 'SECURITY_CHECK_FAILED',
+  PARSE_FAILED = 'PARSE_FAILED',
+  INVALID_SCHEMA = 'INVALID_SCHEMA',
+  DEPENDENCY_MISSING = 'DEPENDENCY_MISSING',
+  CIRCULAR_DEPENDENCY = 'CIRCULAR_DEPENDENCY',
+  REGISTRATION_FAILED = 'REGISTRATION_FAILED',
+  DUPLICATE_SKILL_ID = 'DUPLICATE_SKILL_ID',
+  PERMISSION_DENIED = 'PERMISSION_DENIED',
+}
+
+/** 安装进度 */
+export interface InstallProgress {
+  installId: string;
+  status: InstallLog['status'];
+  progress: {
+    step: string;
+    percentage: number;
+    message: string;
+  };
+  result?: {
+    skillId: string;
+    skillName: string;
+    scope: ResourceScope;
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+  duration: number;
+}
+
+/** 安装上下文 */
+export interface InstallContext {
+  installId: string;
+  agentId: AgentId;
+  scope: ResourceScope;
+  sourceUrl: string;
+  options: InstallOptions;
+  tempDir: string;
+  startTime: number;
+  steps: InstallStep[];
+}
+
+/** 安装步骤 */
+export interface InstallStep {
+  name: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  startTime?: number;
+  endTime?: number;
+  error?: Error;
+}
+
+/** URL 验证结果 */
+export interface UrlValidationResult {
+  valid: boolean;
+  type?: 'http' | 'https' | 'file' | 'git';
+  error?: string;
+}
+
+/** 下载选项 */
+export interface DownloadOptions {
+  timeout?: number;
+  maxRetries?: number;
+  onProgress?: (progress: DownloadProgress) => void;
+}
+
+/** 下载进度 */
+export interface DownloadProgress {
+  total: number;
+  downloaded: number;
+  percentage: number;
+}
+
+/** 下载结果 */
+export interface DownloadResult {
+  success: boolean;
+  packagePath?: string;
+  checksum?: string;
+  size?: number;
+  error?: Error;
+}
+
+/** 验证结果 */
+export interface ValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+  metadata?: PackageMetadata;
+}
+
+/** 验证错误 */
+export interface ValidationError {
+  code: string;
+  message: string;
+  path?: string;
+}
+
+/** 验证警告 */
+export interface ValidationWarning {
+  code: string;
+  message: string;
+  path?: string;
+}
+
+/** 包元数据 */
+export interface PackageMetadata {
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+}
+
+/** 依赖解析结果 */
+export interface DependencyResolution {
+  resolved: Map<ToolId, ToolDefinition>;
+  missing: ToolDependency[];
+  hasCircular: boolean;
+}
+
+/** 自动安装结果 */
+export interface AutoInstallResult {
+  success: boolean;
+  installed: ToolId[];
+  failed: Array<{ toolId: ToolId; error: string }>;
+}
+
+/** 安装配置 */
+export interface InstallConfig {
+  tempDir: string;
+  maxPackageSize: number;
+  downloadTimeout: number;
+  maxRetries: number;
+  maxConcurrentInstalls: number;
+  enableCache: boolean;
+  cacheDir: string;
+}

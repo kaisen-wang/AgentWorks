@@ -253,6 +253,23 @@ function initializeSchema(db: Database.Database): void {
       timestamp INTEGER NOT NULL
     );
 
+    -- 安装日志表
+    CREATE TABLE IF NOT EXISTS installation_logs (
+      install_id TEXT PRIMARY KEY,
+      resource_type TEXT NOT NULL CHECK(resource_type IN ('skill', 'tool')),
+      resource_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('global', 'private')),
+      status TEXT NOT NULL CHECK(status IN ('in_progress', 'completed', 'failed', 'rolled_back')),
+      step TEXT NOT NULL,
+      error_message TEXT,
+      error_details TEXT,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_tasks_assignee_priority ON tasks(assignee_id, priority DESC, created_at ASC);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
@@ -275,6 +292,9 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_execution_logs_resource ON execution_logs(resource_type, resource_id);
     CREATE INDEX IF NOT EXISTS idx_execution_logs_agent ON execution_logs(agent_id);
     CREATE INDEX IF NOT EXISTS idx_execution_logs_timestamp ON execution_logs(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_install_logs_resource ON installation_logs(resource_type, resource_id);
+    CREATE INDEX IF NOT EXISTS idx_install_logs_agent ON installation_logs(agent_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_install_logs_status ON installation_logs(status) WHERE status = 'in_progress';
   `);
 
 }
