@@ -11,6 +11,9 @@ import type {
   PluginDefinition, InstalledPlugin, WebhookDefinition, WebhookEventType, WebhookPayload,
   ABExperiment, ABVariant, ABMetric, ABAssignment,
 } from "@/types";
+import * as agentsActions from "@/actions/agents";
+import * as tasksActions from "@/actions/tasks";
+
 
 // ============================================================
 // 默认值工厂
@@ -40,9 +43,9 @@ const AVATAR_MAP: Record<string, string> = {
 export interface AppState {
   // --- 组织架构 ---
   agents: Record<AgentId, Agent>;
-  createAgent: (name: string, role: AgentRole, parentId: AgentId | null, capabilities?: AgentCapability[], config?: Partial<AgentConfig>, description?: string) => Agent | { error: string };
-  deleteAgent: (id: AgentId) => void;
-  updateAgent: (id: AgentId, updates: Partial<Agent>) => void;
+  createAgent: (name: string, role: AgentRole, parentId: AgentId | null, capabilities?: AgentCapability[], config?: Partial<AgentConfig>, description?: string) => Promise<Agent | { error: string }>;
+  deleteAgent: (id: AgentId) => Promise<void>;
+  updateAgent: (id: AgentId, updates: Partial<Agent>) => Promise<void>;
   setParent: (agentId: AgentId, parentId: AgentId | null, force?: boolean) => { success: boolean; error?: string }; // RFT-05: force 跳过循环检测
   updateMaxChildren: (agentId: AgentId, max: number) => void;
   grantSpanExemption: (agentId: AgentId, reason: string) => { success: boolean; error?: string }; // ORG-07
@@ -79,10 +82,10 @@ export interface AppState {
 
   // --- 任务 ---
   tasks: Record<TaskId, Task>;
-  createTask: (title: string, description: string, assigneeId: AgentId, chatId: ChatId, priority?: TaskPriority, deadline?: number) => Task;
+  createTask: (title: string, description: string, assigneeId: AgentId, chatId: ChatId, priority?: TaskPriority, deadline?: number) => Promise<Task>;
   addSubTask: (taskId: TaskId, assigneeId: AgentId, title: string, description: string, priority?: TaskPriority, deadline?: number) => SubTask;
   updateSubTaskStatus: (taskId: TaskId, subTaskId: TaskId, status: TaskStatus, result?: string) => void;
-  updateTaskStatus: (taskId: TaskId, status: TaskStatus) => void;
+  updateTaskStatus: (taskId: TaskId, status: TaskStatus) => Promise<void>;
 
   // --- 归档 ---
   archives: ArchiveRecord[];
@@ -157,9 +160,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   // ============================================================
   agents: {},
 
-  createAgent: (name, role, parentId, capabilities = [], config, description = "") => {
+  createAgent: async (name, role, parentId, capabilities = [], config, description = "") => {
     const state = get();
-    const id = uuidv4();
 
     // ORG-03: 管理幅度限制检查
     if (parentId && state.agents[parentId]) {
@@ -169,41 +171,42 @@ export const useAppStore = create<AppState>()((set, get) => ({
       }
     }
 
-    const agent: Agent = {
-      id,
+    // 调用 Server Action 保存到数据库
+    const result = await agentsActions.createAgent({
       name,
-      description,
       role,
       parentId,
-      childIds: [],
-      maxChildren: 5,
-      spanExemption: false,
       capabilities,
-      config: { ...defaultAgentConfig(), ...config },
-      status: "idle",
-      avatar: AVATAR_MAP[role] || "bot",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+      config,
+      description,
+    });
 
+    if (result.error) {
+      return { error: result.error };
+    }
+
+    const agent = result.agent!;
+
+    // 更新本地状态
     set((s: AppState) => {
-      const agents = { ...s.agents, [id]: agent };
+      const agents = { ...s.agents, [agent.id]: agent };
       if (parentId && agents[parentId]) {
         agents[parentId] = {
           ...agents[parentId],
-          childIds: [...agents[parentId].childIds, id],
+          childIds: [...agents[parentId].childIds, agent.id],
           updatedAt: Date.now(),
         };
       }
       return { agents };
     });
 
-    // 已移除SmartSync，数据直接存储到SQLite
-
     return agent;
   },
 
-  deleteAgent: (id) => {
+  deleteAgent: async (id) => {
+    // 调用 Server Action 从数据库删除
+    await agentsActions.deleteAgent(id);
+
     set((s: AppState) => {
       const agent = s.agents[id];
       if (!agent) return s;
@@ -247,11 +250,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
       return { agents, tasks: s.tasks };
     });
-
-    // 已移除SmartSync，数据直接存储到SQLite
   },
 
-  updateAgent: (id, updates) => {
+  updateAgent: async (id, updates) => {
+    // 调用 Server Action 更新数据库
+    await agentsActions.updateAgent({ id, updates });
+
     set((s: AppState) => {
       if (!s.agents[id]) return s;
       return {
@@ -261,10 +265,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
         },
       };
     });
-
-    // 已移除SmartSync，数据直接存储到SQLite
-    const agent = get().agents[id];
-    // 已移除SmartSync，数据直接存储到SQLite
   },
 
   setParent: (agentId, newParentId, force) => {
@@ -648,24 +648,29 @@ export const useAppStore = create<AppState>()((set, get) => ({
   // ============================================================
   tasks: {},
 
-  createTask: (title, description, assigneeId, chatId, priority = "medium", deadline) => {
-    const id = uuidv4();
+  createTask: async (title, description, assigneeId, chatId, priority = "medium", deadline) => {
     const state = get();
-    const task: Task = {
-      id,
+
+    // 调用 Server Action 保存到数据库
+    const result = await tasksActions.createTask({
       title,
       description,
       assigneeId,
-      subTasks: [],
-      status: "pending",
-      priority,
-      projectId: state.currentProjectId ?? undefined, // ORG-08: 自动关联当前项目
-      deadline,
       chatId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    set((s: AppState) => ({ tasks: { ...s.tasks, [id]: task } }));
+      priority,
+      projectId: state.currentProjectId ?? undefined,
+    });
+
+    if (result.error) {
+      // 如果失败，返回一个错误标识
+      console.error("创建任务失败:", result.error);
+      throw new Error(result.error);
+    }
+
+    const task = result.task!;
+
+    // 更新本地状态
+    set((s: AppState) => ({ tasks: { ...s.tasks, [task.id]: task } }));
     return task;
   },
 
@@ -724,7 +729,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
     });
   },
 
-  updateTaskStatus: (taskId, status) => {
+  updateTaskStatus: async (taskId, status) => {
+    // 调用 Server Action 更新数据库
+    await tasksActions.updateTask({ id: taskId, updates: { status } });
+
     set((s: AppState) => {
       const task = s.tasks[taskId];
       if (!task) return s;

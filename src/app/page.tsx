@@ -37,24 +37,24 @@ export default function HomePage() {
 
   const agentCount = Object.keys(agents).length;
 
-  const initializeDemo = () => {
+  const initializeDemo = async () => {
     const state = useAppStore.getState();
     if (Object.keys(state.agents).length > 0) return;
 
-    const supervisor = state.createAgent(
+    const supervisor = await state.createAgent(
       "营销主管", "supervisor", null,
       [{ name: "task_decomposition", description: "任务拆解与分配" }, { name: "quality_check", description: "质量检查" }],
       { model: "deepseek-v4-flash", decisionThreshold: 5, monthlyBudget: 20 }
     );
     if ("error" in supervisor) return;
 
-    const designer = state.createAgent(
+    const designer = await state.createAgent(
       "图文本设计", "specialist", supervisor.id,
       [{ name: "design", description: "海报、文案、排版设计" }, { name: "image_generation", description: "DALL-E 图片生成", tools: ["dall-e"] }],
       { model: "deepseek-v4-flash", monthlyBudget: 10 }
     );
 
-    const publisher = state.createAgent(
+    const publisher = await state.createAgent(
       "平台发布", "specialist", supervisor.id,
       [{ name: "publish", description: "多平台格式适配与发布" }, { name: "analytics", description: "数据统计" }],
       { model: "gpt-3.5-turbo", monthlyBudget: 5 }

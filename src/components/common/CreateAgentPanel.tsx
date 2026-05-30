@@ -57,7 +57,7 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError("");
     if (!name.trim()) {
       setError("请输入 Agent 名称");
@@ -73,29 +73,33 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
     const budget = parseFloat(monthlyBudget);
     if (!isNaN(budget) && budget > 0) config.monthlyBudget = budget;
 
-    const result = createAgent(name.trim(), role, parentId || null, capabilities, config, description.trim());
+    try {
+      const result = await createAgent(name.trim(), role, parentId || null, capabilities, config, description.trim());
 
-    if ("error" in result) {
-      setError(result.error || "创建失败");
-      return;
+      if ("error" in result) {
+        setError(result.error || "创建失败");
+        return;
+      }
+
+      // 自动创建单聊
+      const chat = createChat("direct", result.name, [
+        { id: "user", name: "你", avatar: "user", role: "owner" },
+        { id: result.id, name: result.name, avatar: result.avatar, role: "member" },
+      ]);
+
+      // 发送欢迎消息
+      const capStr = capabilities.length > 0 ? `，能力: ${capabilities.map((c) => c.name).join("、")}` : "";
+      sendMessage(chat.id, "system", "system", `已创建${role === "supervisor" ? "主管" : "专员"} Agent「${result.name}」，模型 ${model}${capStr}`);
+
+      setActiveChat(chat.id);
+
+      // Agent已通过API创建，无需额外同步
+      console.log('✅ [Agent创建] 完成', { agentId: result.id, agentName: result.name });
+
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建失败");
     }
-
-    // 自动创建单聊
-    const chat = createChat("direct", result.name, [
-      { id: "user", name: "你", avatar: "user", role: "owner" },
-      { id: result.id, name: result.name, avatar: result.avatar, role: "member" },
-    ]);
-
-    // 发送欢迎消息
-    const capStr = capabilities.length > 0 ? `，能力: ${capabilities.map((c) => c.name).join("、")}` : "";
-    sendMessage(chat.id, "system", "system", `已创建${role === "supervisor" ? "主管" : "专员"} Agent「${result.name}」，模型 ${model}${capStr}`);
-
-    setActiveChat(chat.id);
-    
-    // Agent已通过API创建，无需额外同步
-    console.log('✅ [Agent创建] 完成', { agentId: result.id, agentName: result.name });
-    
-    onClose();
   };
 
   return (

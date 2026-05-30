@@ -105,7 +105,7 @@ export async function executeCommand(
         return { success: false, message: `Agent "${agentName}" 不存在` };
       }
       // 创建任务
-      const task = store.createTask(
+      const task = await store.createTask(
         taskDesc.slice(0, 50),
         taskDesc,
         agent.id,
@@ -258,7 +258,7 @@ export async function executeCommand(
 
     case "new_agent": {
       const name = parsed.args || "新 Agent";
-      const result = store.createAgent(name, "specialist", null, [], { model: "deepseek-v4-flash" });
+      const result = await store.createAgent(name, "specialist", null, [], { model: "deepseek-v4-flash" });
       if ("error" in result) {
         return { success: false, message: result.error };
       }
