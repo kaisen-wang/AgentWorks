@@ -13,6 +13,7 @@ import type {
 } from "@/types";
 import * as agentsActions from "@/actions/agents";
 import * as tasksActions from "@/actions/tasks";
+import * as chatActions from "@/actions/chat";
 
 
 // ============================================================
@@ -460,6 +461,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const id = uuidv4();
     const chat: Chat = { id, type, name, members, createdAt: Date.now() };
     set((s: AppState) => ({ chats: { ...s.chats, [id]: chat } }));
+    // 持久化到数据库
+    chatActions.createChat(chat).catch((err) => console.error("持久化会话失败:", err));
     return chat;
   },
 
@@ -468,6 +471,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
       const { [id]: _, ...rest } = s.chats;
       return { chats: rest, activeChatId: s.activeChatId === id ? null : s.activeChatId };
     });
+    // 持久化删除到数据库
+    chatActions.deleteChat(id).catch((err) => console.error("删除会话失败:", err));
   },
 
   setActiveChat: (id) => set({ activeChatId: id }),
@@ -530,6 +535,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
           }
         : s.chats,
     }));
+    // 持久化消息到数据库
+    chatActions.createMessage(msg).catch((err) => console.error("持久化消息失败:", err));
     return msg;
   },
 
@@ -1259,18 +1266,45 @@ export async function loadFromServer(): Promise<boolean> {
     if (!res.ok) return false;
     const data = await res.json();
 
-    // 只有当服务端有数据时才合并
-    if (data.agents && Array.isArray(data.agents) && data.agents.length > 0) {
-      useAppStore.setState((state: AppState) => {
-        // 使用智能合并策略，根据 name+role 去重
-        const mergedAgents = mergeAgentsWithDedup(state.agents, data.agents);
+    useAppStore.setState((state: AppState) => {
+      const updates: Partial<AppState> = {};
 
-        return {
-          ...state,
-          agents: mergedAgents,
-        };
-      });
-    }
+      // 合并 agents
+      if (data.agents && Array.isArray(data.agents) && data.agents.length > 0) {
+        updates.agents = mergeAgentsWithDedup(state.agents, data.agents);
+      }
+
+      // 加载 chats
+      if (data.chats && Array.isArray(data.chats) && data.chats.length > 0) {
+        const chatsMap: Record<string, Chat> = { ...state.chats };
+        for (const chat of data.chats) {
+          chatsMap[chat.id] = chat;
+        }
+        updates.chats = chatsMap;
+      }
+
+      // 加载 messages（按 chatId 分组）
+      if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+        const messagesMap: Record<string, Message[]> = { ...state.messages };
+        for (const msg of data.messages) {
+          if (!messagesMap[msg.chatId]) {
+            messagesMap[msg.chatId] = [];
+          }
+          // 避免重复消息
+          if (!messagesMap[msg.chatId].some((m) => m.id === msg.id)) {
+            messagesMap[msg.chatId].push(msg);
+          }
+        }
+        // 按时间排序
+        for (const chatId of Object.keys(messagesMap)) {
+          messagesMap[chatId].sort((a, b) => a.timestamp - b.timestamp);
+        }
+        updates.messages = messagesMap;
+      }
+
+      return { ...state, ...updates };
+    });
+
     return true;
   } catch {
     return false;

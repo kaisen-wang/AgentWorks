@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db/database";
 import { AgentRepository } from "@/lib/db/agentRepo";
 import { TaskRepository } from "@/lib/db/taskRepo";
 import { ChatRepository } from "@/lib/db/chatRepo";
+import { MessageRepository } from "@/lib/db/messageRepo";
 
 /**
  * GET /api/sync - 从 SQLite 读取所有数据
@@ -14,11 +15,19 @@ export async function GET() {
     const agentRepo = new AgentRepository(db);
     const taskRepo = new TaskRepository(db);
     const chatRepo = new ChatRepository(db);
+    const messageRepo = new MessageRepository(db);
 
     // 获取所有数据
     const agents = agentRepo.findAll();
     const tasks = taskRepo.findAll();
     const chats = chatRepo.findAll();
+
+    // 获取所有会话的消息
+    const messages: unknown[] = [];
+    for (const chat of chats) {
+      const chatMessages = messageRepo.findByChat(chat.id);
+      messages.push(...chatMessages);
+    }
 
     // 获取项目列表
     const projects = db.prepare("SELECT * FROM projects ORDER BY created_at ASC").all();
@@ -27,7 +36,8 @@ export async function GET() {
       agents,
       projects,
       tasks,
-      chats
+      chats,
+      messages
     });
   } catch (error) {
     console.error("获取同步数据失败:", error);
@@ -36,6 +46,7 @@ export async function GET() {
       projects: [],
       tasks: [],
       chats: [],
+      messages: [],
       error: "数据库错误"
     }, { status: 500 });
   }
