@@ -39,11 +39,12 @@ const DEFAULT_CONFIG: Partial<LLMConfig> = {
 // LLM 请求/响应
 // ============================================================
 
-interface ChatMessage {
+export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   name?: string; // for tool messages
   tool_call_id?: string; // for tool messages
+  tool_calls?: ToolCall[]; // for assistant messages with tool calls
 }
 
 export interface ToolDefinition {
@@ -232,6 +233,58 @@ export async function callLLM(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+// ============================================================
+// 流式调用
+// ============================================================
+
+/**
+ * 流式调用 LLM（OpenAI 兼容接口）
+ *
+ * 发起 stream: true 的请求，返回原始 Response 对象，
+ * 其 body 为 ReadableStream<Uint8Array>（SSE 字节流），
+ * 供 StreamingEngine 消费解析。
+ */
+export async function callLLMStreaming(
+  messages: ChatMessage[],
+  config: LLMConfig,
+  options?: {
+    tools?: ToolDefinition[];
+    toolChoice?: "auto" | "none" | "required";
+    signal?: AbortSignal;
+  },
+): Promise<Response> {
+  const fullConfig = { ...DEFAULT_CONFIG, ...config };
+
+  const requestBody: Record<string, unknown> = {
+    model: fullConfig.model,
+    messages,
+    temperature: fullConfig.temperature,
+    max_tokens: fullConfig.maxTokens,
+    stream: true,
+  };
+
+  if (options?.tools && options.tools.length > 0) {
+    requestBody.tools = options.tools;
+    requestBody.tool_choice = options.toolChoice || "auto";
+  }
+
+  const response = await fetch(`${fullConfig.endpoint}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${fullConfig.apiKey}`,
+    },
+    body: JSON.stringify(requestBody),
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`LLM API 错误: ${response.status} ${response.statusText}`);
+  }
+
+  return response;
 }
 
 // ============================================================

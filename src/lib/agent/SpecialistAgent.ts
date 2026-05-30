@@ -9,9 +9,9 @@
 
 import { BaseAgent, ExecutionResult, ReportContent, ArchiveInput } from "./BaseAgent";
 import type { AgentId, AgentConfig, AgentCapability } from "@/types";
-import { callLLM } from "@/lib/llm";
-import type { LLMConfig, ToolCall } from "@/lib/llm";
-import { getAgentToolDefinitions, executeToolCall, type ToolExecutionResult } from "./AgentTools";
+import type { LLMConfig } from "@/lib/llm";
+import { getAgentToolDefinitions } from "./AgentTools";
+import { AgentLoop } from "@/lib/agent-loop/AgentLoop";
 
 export class SpecialistAgent extends BaseAgent {
   readonly capabilities: AgentCapability[];
@@ -32,6 +32,8 @@ export class SpecialistAgent extends BaseAgent {
   /**
    * 执行 - 专员执行具体任务
    * 优先使用 LLM 生成结果；LLM 不可用时返回基于能力标签的模拟结果
+   *
+   * 工具调用循环：LLM 返回 tool_calls → 执行工具 → 结果回传 LLM → LLM 决定继续或结束
    */
   async execute(task: string, context?: Record<string, unknown>): Promise<ExecutionResult> {
     this.setStatus("executing");
@@ -65,69 +67,31 @@ export class SpecialistAgent extends BaseAgent {
         // 获取工具定义
         const tools = getAgentToolDefinitions();
 
-        // 调用LLM，传递工具定义
-        const response = await callLLM(
-          [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: task },
-          ],
+        // 使用 AgentLoop 驱动执行
+        const loop = new AgentLoop({
+          systemPrompt,
           llmConfig,
-          { tools, toolChoice: "auto" }
-        );
+          tools,
+          maxIterations: 50,
+        });
 
-        const cost = response.usage
-          ? (response.usage.promptTokens * 0.00003 + response.usage.completionTokens * 0.00006)
-          : 0.01;
+        const result = await loop.run(task);
 
-        // 检查是否有工具调用
-        if (response.toolCalls && response.toolCalls.length > 0) {
-          console.log(`🔧 [${this.name}] LLM请求调用 ${response.toolCalls.length} 个工具`);
-
-          // 执行工具调用
-          const toolResults: Array<{ toolCall: ToolCall; result: ToolExecutionResult }> = [];
-
-          for (const toolCall of response.toolCalls) {
-            console.log(`🔧 [${this.name}] 执行工具: ${toolCall.function.name}`);
-
-            // 记录参数长度用于调试
-            const argsLength = toolCall.function.arguments?.length || 0;
-            console.log(`📝 [${this.name}] 参数长度: ${argsLength} 字符`);
-
-            const result = await executeToolCall(
-              toolCall.function.name,
-              toolCall.function.arguments
-            );
-
-            toolResults.push({ toolCall, result });
-
-            console.log(`✅ [${this.name}] 工具执行结果:`, result.success ? result.output : result.error);
+        // 估算 cost
+        let totalCost = 0;
+        for (const msg of result.transcript) {
+          if (msg.role === "assistant") {
+            totalCost += (msg.content?.length ?? 0) * 0.00001;
           }
-
-          // 格式化工具执行结果
-          const resultSummary = toolResults.map(({ toolCall, result }) => {
-            if (result.success) {
-              return `✅ ${toolCall.function.name}: ${result.output}`;
-            } else {
-              return `❌ ${toolCall.function.name}: ${result.error}`;
-            }
-          }).join("\n");
-
-          return {
-            success: true,
-            data: `已完成操作：\n\n${resultSummary}`,
-            cost,
-            apiCalls: 1,
-            model: response.model,
-          };
         }
 
-        // 没有工具调用，返回文本
         return {
-          success: true,
-          data: response.content,
-          cost,
-          apiCalls: 1,
-          model: response.model,
+          success: result.status !== "error",
+          data: result.lastAssistantMessage?.content ?? "",
+          cost: totalCost,
+          apiCalls: result.totalIterations,
+          model: llmConfig.model,
+          error: result.errorMessage ?? undefined,
         };
       }
 
