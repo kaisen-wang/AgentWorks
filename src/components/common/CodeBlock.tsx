@@ -8,6 +8,7 @@ interface CodeBlockProps {
   className?: string;
   showLineNumbers?: boolean;
   showCopyButton?: boolean;
+  node?: unknown;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -38,6 +39,7 @@ export const CodeBlock = React.memo(function CodeBlock({
   className,
   showLineNumbers = false,
   showCopyButton = true,
+  node,
 }: CodeBlockProps) {
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : 'text';
@@ -48,6 +50,16 @@ export const CodeBlock = React.memo(function CodeBlock({
 
   // 将children转换为字符串
   const codeString = typeof children === 'string' ? children : String(children || '');
+
+  // 判断是否为代码块（有 className/language-xxx）vs 行内代码
+  // 代码块：react-markdown 会将 <pre><code className="language-xxx"> 传递
+  // 行内代码：react-markdown 会将 <code> 传递（无 className）
+  const isCodeBlock = !!className;
+
+  if (!isCodeBlock) {
+    // 行内代码：返回简单的 <code> 元素
+    return <code className="px-1 py-0.5 rounded bg-gray-700/50 text-sm font-mono">{codeString}</code>;
+  }
 
   return (
     <div className="relative">
