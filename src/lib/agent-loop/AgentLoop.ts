@@ -217,7 +217,7 @@ export class AgentLoop {
           // 流式调用 LLM
           const assistantMessage = await this.streamAssistantResponse(signal);
 
-          if (assistantMessage.role === "assistant" && assistantMessage.content) {
+          if (assistantMessage.role === "assistant" && (assistantMessage.content || (assistantMessage.toolCalls && assistantMessage.toolCalls.length > 0))) {
             this.transcript.push(assistantMessage);
           }
 
