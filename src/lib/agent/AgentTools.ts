@@ -94,6 +94,36 @@ export function getAgentToolDefinitions(): ToolDefinition[] {
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "install_skill",
+        description: "通过 URL 安装 Skill。支持 HTTP/HTTPS、本地文件路径和 Git 仓库。安装后 Skill 会自动注册到指定范围（全局或私有）。",
+        parameters: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "Skill 包的 URL，如 'https://example.com/skills/my-skill.tar.gz' 或 'file:///path/to/skill' 或 'git://github.com/user/skill.git'",
+            },
+            scope: {
+              type: "string",
+              enum: ["global", "private"],
+              description: "安装范围：'global' 表示所有 Agent 可用，'private' 表示仅当前 Agent 可用。默认为 'private'",
+            },
+            agent_id: {
+              type: "string",
+              description: "执行安装的 Agent ID",
+            },
+            auto_install_dependencies: {
+              type: "boolean",
+              description: "是否自动安装缺失的依赖，默认为 true",
+            },
+          },
+          required: ["url", "agent_id"],
+        },
+      },
+    },
   ];
 }
 
@@ -146,6 +176,9 @@ export async function executeToolCall(
 
       case "run_command":
         return await executeRunCommand(args.command);
+
+      case "install_skill":
+        return await executeInstallSkill(args.url, args.agent_id, args.scope, args.auto_install_dependencies);
 
       default:
         return {
@@ -321,6 +354,56 @@ async function executeRunCommand(command: string): Promise<ToolExecutionResult> 
     return {
       success: false,
       error: `命令执行失败: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * 执行 Skill 安装
+ * 通过调用安装 API 端点实现，在服务器端执行
+ */
+async function executeInstallSkill(
+  url: string,
+  agentId: string,
+  scope?: string,
+  autoInstallDependencies?: boolean
+): Promise<ToolExecutionResult> {
+  // 检查是否在服务器端
+  if (typeof window !== 'undefined') {
+    return {
+      success: false,
+      error: "Skill 安装只在服务器端可用",
+    };
+  }
+
+  try {
+    const { getSkillInstaller } = await import("@/lib/install");
+    const installer = await getSkillInstaller();
+
+    const result = await installer.install(
+      url,
+      (scope === 'global' ? 'global' : 'private') as 'global' | 'private',
+      agentId,
+      {
+        autoInstallDependencies: autoInstallDependencies !== false,
+      }
+    );
+
+    if (result.success) {
+      return {
+        success: true,
+        output: `Skill 安装成功: skillId=${result.skillId}, installId=${result.installId}`,
+      };
+    } else {
+      return {
+        success: false,
+        error: `Skill 安装失败: [${result.error?.code}] ${result.error?.message}`,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Skill 安装失败: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }
