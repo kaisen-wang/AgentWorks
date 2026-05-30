@@ -8,9 +8,20 @@ vi.mock("@/lib/llm", () => ({
   callLLM: vi.fn(),
 }));
 
+// Mock OpenAIClientFactory to control SDK client behavior
+vi.mock("@/lib/llm/OpenAIClientFactory", () => ({
+  OpenAIClientFactory: {
+    getClient: vi.fn(),
+    disposeClient: vi.fn(),
+    disposeAll: vi.fn(),
+  },
+}));
+
 import { callLLM } from "@/lib/llm";
+import { OpenAIClientFactory } from "@/lib/llm/OpenAIClientFactory";
 
 const mockedCallLLM = vi.mocked(callLLM);
+const mockedGetClient = vi.mocked(OpenAIClientFactory.getClient);
 
 const defaultConfig: LLMConfig = {
   endpoint: "https://api.example.com/v1",
@@ -20,15 +31,21 @@ const defaultConfig: LLMConfig = {
 
 const emptyTools: ToolDefinition[] = [];
 
-function createSSEBody(chunks: string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  const lines = chunks.map((c) => `data: ${c}\n\n`).join("");
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoder.encode(lines));
-      controller.close();
+/** 创建模拟的 SDK 流式响应（async iterable） */
+function createMockStream(chunks: Record<string, unknown>[]) {
+  return {
+    [Symbol.asyncIterator]() {
+      let index = 0;
+      return {
+        async next() {
+          if (index < chunks.length) {
+            return { value: chunks[index++], done: false };
+          }
+          return { value: undefined, done: true };
+        },
+      };
     },
-  });
+  };
 }
 
 describe("DefaultStreamingEngine", () => {
@@ -48,8 +65,14 @@ describe("DefaultStreamingEngine", () => {
         model: "test-model",
       });
 
-      // Mock fetch to throw
-      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
+      // Mock SDK client to throw
+      mockedGetClient.mockReturnValue({
+        chat: {
+          completions: {
+            create: vi.fn().mockRejectedValue(new Error("Network error")),
+          },
+        },
+      } as unknown as ReturnType<typeof OpenAIClientFactory.getClient>);
 
       const events: StreamEvent[] = [];
       const result = await engine.streamResponse(
@@ -66,28 +89,28 @@ describe("DefaultStreamingEngine", () => {
     });
   });
 
-  describe("SSE 解析", () => {
+  describe("SDK 流式迭代", () => {
     it("正确解析 text_delta 事件", async () => {
-      const sseChunks = [
-        JSON.stringify({
+      const streamChunks = [
+        {
           model: "test-model",
           choices: [{ delta: { content: "Hello" }, index: 0 }],
-        }),
-        JSON.stringify({
+        },
+        {
           model: "test-model",
           choices: [{ delta: { content: " world" }, index: 0 }],
-        }),
-        "[DONE]",
+        },
       ];
 
-      const mockResponse = {
-        ok: true,
-        body: createSSEBody(sseChunks),
-        status: 200,
-        statusText: "OK",
-      };
+      const mockStream = createMockStream(streamChunks);
 
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse as Response);
+      mockedGetClient.mockReturnValue({
+        chat: {
+          completions: {
+            create: vi.fn().mockResolvedValue(mockStream),
+          },
+        },
+      } as unknown as ReturnType<typeof OpenAIClientFactory.getClient>);
 
       const events: StreamEvent[] = [];
       const result = await engine.streamResponse(
@@ -106,8 +129,8 @@ describe("DefaultStreamingEngine", () => {
     });
 
     it("正确解析 toolcall_delta 事件并累积", async () => {
-      const sseChunks = [
-        JSON.stringify({
+      const streamChunks = [
+        {
           model: "test-model",
           choices: [{
             delta: {
@@ -115,8 +138,8 @@ describe("DefaultStreamingEngine", () => {
             },
             index: 0,
           }],
-        }),
-        JSON.stringify({
+        },
+        {
           model: "test-model",
           choices: [{
             delta: {
@@ -124,8 +147,8 @@ describe("DefaultStreamingEngine", () => {
             },
             index: 0,
           }],
-        }),
-        JSON.stringify({
+        },
+        {
           model: "test-model",
           choices: [{
             delta: {
@@ -133,18 +156,18 @@ describe("DefaultStreamingEngine", () => {
             },
             index: 0,
           }],
-        }),
-        "[DONE]",
+        },
       ];
 
-      const mockResponse = {
-        ok: true,
-        body: createSSEBody(sseChunks),
-        status: 200,
-        statusText: "OK",
-      };
+      const mockStream = createMockStream(streamChunks);
 
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse as Response);
+      mockedGetClient.mockReturnValue({
+        chat: {
+          completions: {
+            create: vi.fn().mockResolvedValue(mockStream),
+          },
+        },
+      } as unknown as ReturnType<typeof OpenAIClientFactory.getClient>);
 
       const result = await engine.streamResponse(
         [{ role: "user", content: "read" }],
@@ -161,27 +184,27 @@ describe("DefaultStreamingEngine", () => {
     });
 
     it("正确解析 usage 信息", async () => {
-      const sseChunks = [
-        JSON.stringify({
+      const streamChunks = [
+        {
           model: "test-model",
           choices: [{ delta: { content: "hi" }, index: 0 }],
-        }),
-        JSON.stringify({
+        },
+        {
           model: "test-model",
           choices: [{ delta: {}, index: 0 }],
           usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-        }),
-        "[DONE]",
+        },
       ];
 
-      const mockResponse = {
-        ok: true,
-        body: createSSEBody(sseChunks),
-        status: 200,
-        statusText: "OK",
-      };
+      const mockStream = createMockStream(streamChunks);
 
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse as Response);
+      mockedGetClient.mockReturnValue({
+        chat: {
+          completions: {
+            create: vi.fn().mockResolvedValue(mockStream),
+          },
+        },
+      } as unknown as ReturnType<typeof OpenAIClientFactory.getClient>);
 
       const result = await engine.streamResponse(
         [{ role: "user", content: "hi" }],
@@ -200,33 +223,39 @@ describe("DefaultStreamingEngine", () => {
   });
 
   describe("AbortSignal 取消", () => {
-    it("取消时中断 fetch 请求", async () => {
-      const controller = new AbortController();
-      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((_url, options) => {
-        return new Promise((_resolve, reject) => {
-          const signal = (options as RequestInit).signal as AbortSignal;
-          if (signal.aborted) {
-            reject(new DOMException("Aborted", "AbortError"));
-          }
-          signal.addEventListener("abort", () => {
-            reject(new DOMException("Aborted", "AbortError"));
-          });
-        });
+    it("取消时中断流式请求并降级", async () => {
+      mockedCallLLM.mockResolvedValue({
+        content: "fallback",
+        toolCalls: [],
+        usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 },
+        model: "test-model",
       });
+
+      const controller = new AbortController();
+
+      // Mock SDK client to throw on abort
+      mockedGetClient.mockReturnValue({
+        chat: {
+          completions: {
+            create: vi.fn().mockImplementation(() => {
+              throw new DOMException("Aborted", "AbortError");
+            }),
+          },
+        },
+      } as unknown as ReturnType<typeof OpenAIClientFactory.getClient>);
 
       controller.abort();
 
-      await expect(
-        engine.streamResponse(
-          [{ role: "user", content: "hi" }],
-          defaultConfig,
-          emptyTools,
-          controller.signal,
-          () => {},
-        ),
-      ).resolves.toBeDefined(); // 降级为非流式
+      const result = await engine.streamResponse(
+        [{ role: "user", content: "hi" }],
+        defaultConfig,
+        emptyTools,
+        controller.signal,
+        () => {},
+      );
 
-      expect(fetchSpy).toHaveBeenCalled();
+      // Should fallback to non-streaming
+      expect(result).toBeDefined();
     });
   });
 });

@@ -9,6 +9,10 @@
  */
 
 import type { AgentId, AgentCapability } from "@/types";
+import { OpenAIClientFactory } from "./OpenAIClientFactory";
+import { toSDKMessages, toSDKTools, toSDKToolChoice, fromSDKResponse } from "./TypeMappers";
+import { APIError, AuthenticationError, RateLimitError, APIConnectionTimeoutError } from "openai";
+import type { ChatCompletionCreateParamsNonStreaming, ChatCompletionCreateParamsStreaming } from "openai/resources/chat/completions/completions";
 
 // ============================================================
 // LLM 配置
@@ -54,7 +58,7 @@ export interface ToolDefinition {
     description: string;
     parameters: {
       type: "object";
-      properties: Record<string, any>;
+      properties: Record<string, unknown>;
       required?: string[];
     };
   };
@@ -69,7 +73,7 @@ export interface ToolCall {
   };
 }
 
-interface LLMResponse {
+export interface LLMResponse {
   content: string;
   toolCalls?: ToolCall[];
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
@@ -143,6 +147,9 @@ export function buildDecomposeUserPrompt(taskDescription: string): string {
 
 /**
  * 调用 LLM（OpenAI 兼容接口）
+ *
+ * 使用 OpenAI SDK 的 client.chat.completions.create 替代原生 fetch。
+ * 函数签名和返回类型保持不变。
  */
 export async function callLLM(
   messages: ChatMessage[],
@@ -151,87 +158,56 @@ export async function callLLM(
 ): Promise<LLMResponse> {
   const fullConfig = { ...DEFAULT_CONFIG, ...config };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), fullConfig.timeout);
-
   try {
-    const requestBody: any = {
+    const client = OpenAIClientFactory.getClient(fullConfig);
+
+    const sdkMessages = toSDKMessages(messages);
+
+    const createParams: ChatCompletionCreateParamsNonStreaming = {
       model: fullConfig.model,
-      messages,
+      messages: sdkMessages,
       temperature: fullConfig.temperature,
       max_tokens: fullConfig.maxTokens,
     };
 
     // 添加工具定义
     if (options?.tools && options.tools.length > 0) {
-      requestBody.tools = options.tools;
-      requestBody.tool_choice = options.toolChoice || "auto";
+      createParams.tools = toSDKTools(options.tools);
+      createParams.tool_choice = toSDKToolChoice(options.toolChoice || "auto");
     }
 
-    const response = await fetch(`${fullConfig.endpoint}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${fullConfig.apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`LLM API 错误: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const message = data.choices?.[0]?.message;
+    const response = await client.chat.completions.create(createParams);
 
     // 打印完整的 LLM 响应用于调试
+    const message = response.choices?.[0]?.message;
     console.log('📊 [LLM Response] 完整响应数据:');
     console.log('- Content length:', message?.content?.length || 0);
     console.log('- Tool calls count:', message?.tool_calls?.length || 0);
-    
+
     if (message?.tool_calls && message.tool_calls.length > 0) {
-      message.tool_calls.forEach((tc: any, index: number) => {
+      message.tool_calls.forEach((tc, index: number) => {
         console.log(`- Tool call ${index + 1}: ${tc.function.name}`);
         console.log(`  - Arguments length: ${tc.function.arguments?.length || 0}`);
         console.log(`  - Arguments preview:`, tc.function.arguments);
       });
     }
 
-    // 解析工具调用
-    const toolCalls: ToolCall[] | undefined = message?.tool_calls?.map((tc: any) => {
-      // 验证 arguments 是否是有效的 JSON 字符串
-      let args = tc.function.arguments;
-
-      // 如果 arguments 不是字符串，尝试转换为 JSON
-      if (typeof args !== 'string') {
-        args = JSON.stringify(args);
-      }
-
-      return {
-        id: tc.id,
-        type: tc.type,
-        function: {
-          name: tc.function.name,
-          arguments: args,
-        },
-      };
-    });
-
-    return {
-      content: message?.content || "",
-      toolCalls,
-      usage: data.usage
-        ? {
-            promptTokens: data.usage.prompt_tokens,
-            completionTokens: data.usage.completion_tokens,
-            totalTokens: data.usage.total_tokens,
-          }
-        : undefined,
-      model: data.model || fullConfig.model,
-    };
-  } finally {
-    clearTimeout(timeoutId);
+    return fromSDKResponse(response);
+  } catch (error: unknown) {
+    // 统一错误处理：适配 SDK 错误类型
+    if (error instanceof AuthenticationError) {
+      throw new Error(`LLM 认证失败: API Key 无效或已过期 (status: ${error.status})`);
+    }
+    if (error instanceof RateLimitError) {
+      throw new Error(`LLM 速率限制: 请求过于频繁，请稍后重试 (status: ${error.status})`);
+    }
+    if (error instanceof APIConnectionTimeoutError) {
+      throw new Error(`LLM 请求超时: 请求在 ${fullConfig.timeout}ms 内未完成`);
+    }
+    if (error instanceof APIError) {
+      throw new Error(`LLM API 错误: ${error.status} ${error.message}`);
+    }
+    throw error;
   }
 }
 
@@ -242,9 +218,8 @@ export async function callLLM(
 /**
  * 流式调用 LLM（OpenAI 兼容接口）
  *
- * 发起 stream: true 的请求，返回原始 Response 对象，
- * 其 body 为 ReadableStream<Uint8Array>（SSE 字节流），
- * 供 StreamingEngine 消费解析。
+ * 使用 OpenAI SDK 的流式 client.chat.completions.create({ stream: true }) 替代原生 fetch。
+ * 返回 SDK 的 Stream 对象供 StreamingEngine 消费。
  */
 export async function callLLMStreaming(
   messages: ChatMessage[],
@@ -254,37 +229,31 @@ export async function callLLMStreaming(
     toolChoice?: "auto" | "none" | "required";
     signal?: AbortSignal;
   },
-): Promise<Response> {
+) {
   const fullConfig = { ...DEFAULT_CONFIG, ...config };
+  const client = OpenAIClientFactory.getClient(fullConfig);
 
-  const requestBody: Record<string, unknown> = {
+  const sdkMessages = toSDKMessages(messages);
+
+  const createParams: ChatCompletionCreateParamsStreaming = {
     model: fullConfig.model,
-    messages,
+    messages: sdkMessages,
     temperature: fullConfig.temperature,
     max_tokens: fullConfig.maxTokens,
     stream: true,
   };
 
   if (options?.tools && options.tools.length > 0) {
-    requestBody.tools = options.tools;
-    requestBody.tool_choice = options.toolChoice || "auto";
+    createParams.tools = toSDKTools(options.tools);
+    createParams.tool_choice = toSDKToolChoice(options.toolChoice || "auto");
   }
 
-  const response = await fetch(`${fullConfig.endpoint}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${fullConfig.apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
-    signal: options?.signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`LLM API 错误: ${response.status} ${response.statusText}`);
+  // 传递 AbortSignal 支持
+  if (options?.signal) {
+    (createParams as unknown as Record<string, unknown>).signal = options.signal;
   }
 
-  return response;
+  return client.chat.completions.create(createParams);
 }
 
 // ============================================================
