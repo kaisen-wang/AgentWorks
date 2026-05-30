@@ -69,6 +69,7 @@ export class OpenAIClientFactory {
       baseURL: config.endpoint,
       timeout: config.timeout,
       maxRetries: effectiveMaxRetries,
+      dangerouslyAllowBrowser: true,
     });
 
     // 缓存实例
