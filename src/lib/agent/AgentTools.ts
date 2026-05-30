@@ -8,6 +8,7 @@
 
 import type { ToolDefinition } from "@/lib/llm/LLMService";
 import { writeFileContent, readFileContent } from "@/actions/file-actions";
+import { executeCommand, executeSkillInstall } from "@/actions/command-actions";
 
 /**
  * 获取Agent可用的工具定义
@@ -302,65 +303,14 @@ async function executeEditFile(
 }
 
 /**
- * 执行命令（受限）
- * 注意：命令执行只能在服务器端进行
+ * 执行命令（通过 Server Action 在服务端执行）
  */
 async function executeRunCommand(command: string): Promise<ToolExecutionResult> {
-  // 检查是否在服务器端
-  if (typeof window !== 'undefined') {
-    return {
-      success: false,
-      error: "命令执行只在服务器端可用",
-    };
-  }
-
-  // 安全检查：只允许特定命令
-  const allowedCommands = [
-    "npm install",
-    "npm run build",
-    "npm run dev",
-    "npm test",
-    "npm run lint",
-    "yarn install",
-    "yarn build",
-    "yarn dev",
-    "yarn test",
-  ];
-
-  const isAllowed = allowedCommands.some((allowed) => command.startsWith(allowed));
-
-  if (!isAllowed) {
-    return {
-      success: false,
-      error: `命令不允许执行: ${command}。只允许: ${allowedCommands.join(", ")}`,
-    };
-  }
-
-  try {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
-    const { stdout, stderr } = await execAsync(command, {
-      cwd: process.cwd(),
-      timeout: 30000, // 30秒超时
-    });
-
-    return {
-      success: true,
-      output: stdout || stderr || "命令执行成功",
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      error: `命令执行失败: ${error.message}`,
-    };
-  }
+  return await executeCommand(command);
 }
 
 /**
- * 执行 Skill 安装
- * 通过调用安装 API 端点实现，在服务器端执行
+ * 执行 Skill 安装（通过 Server Action 在服务端执行）
  */
 async function executeInstallSkill(
   url: string,
@@ -368,42 +318,5 @@ async function executeInstallSkill(
   scope?: string,
   autoInstallDependencies?: boolean
 ): Promise<ToolExecutionResult> {
-  // 检查是否在服务器端
-  if (typeof window !== 'undefined') {
-    return {
-      success: false,
-      error: "Skill 安装只在服务器端可用",
-    };
-  }
-
-  try {
-    const { getSkillInstaller } = await import("@/lib/install");
-    const installer = await getSkillInstaller();
-
-    const result = await installer.install(
-      url,
-      (scope === 'global' ? 'global' : 'private') as 'global' | 'private',
-      agentId,
-      {
-        autoInstallDependencies: autoInstallDependencies !== false,
-      }
-    );
-
-    if (result.success) {
-      return {
-        success: true,
-        output: `Skill 安装成功: skillId=${result.skillId}, installId=${result.installId}`,
-      };
-    } else {
-      return {
-        success: false,
-        error: `Skill 安装失败: [${result.error?.code}] ${result.error?.message}`,
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: `Skill 安装失败: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
+  return await executeSkillInstall(url, agentId, scope, autoInstallDependencies);
 }
