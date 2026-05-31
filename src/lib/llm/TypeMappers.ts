@@ -184,10 +184,18 @@ export function fromSDKStreamChunk(
 
   // tool call deltas
   if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+    // 跟踪当前正在累积的 tool call id（用于后续 chunk 中 id 为空时回退）
+    let currentToolCallId: string | null = null;
+
     for (const tcDelta of delta.tool_calls) {
       const id = tcDelta.id ?? "";
       const name = tcDelta.function?.name ?? "";
       const argsDelta = tcDelta.function?.arguments ?? "";
+
+      // 更新当前 tool call id
+      if (id) {
+        currentToolCallId = id;
+      }
 
       // [DEBUG] 打印 tool call delta 详情
       console.log('[DEBUG][TypeMappers] toolcall_delta:', {
@@ -198,6 +206,7 @@ export function fromSDKStreamChunk(
         hasId: !!tcDelta.id,
         hasName: !!tcDelta.function?.name,
         hasArgs: !!tcDelta.function?.arguments,
+        currentToolCallId,
       });
 
       // 累积工具调用
@@ -209,17 +218,23 @@ export function fromSDKStreamChunk(
         }
       }
 
-      if (id && argsDelta) {
-        const acc = toolCallAccumulators.get(id);
+      // 累积 arguments delta
+      // 关键修复：流式响应中，只有第一个 chunk 包含 id，后续 chunk 的 id 为空。
+      // 需要使用 currentToolCallId（最后一个有 id 的 chunk 的 id）来回退查找累积器。
+      const effectiveId = id || currentToolCallId;
+      if (effectiveId && argsDelta) {
+        const acc = toolCallAccumulators.get(effectiveId);
         if (acc) {
           acc.argumentsChunks.push(argsDelta);
+        } else {
+          console.warn('[TypeMappers] 未找到 tool call 累积器，id=', effectiveId, 'argsDelta=', argsDelta.slice(0, 100));
         }
       }
 
       onEvent({
         type: "toolcall_delta",
         toolCall: {
-          id: id || (toolCallAccumulators.size > 0 ? [...toolCallAccumulators.keys()].pop()! : ""),
+          id: effectiveId || "",
           name,
           argumentsDelta: argsDelta,
         },

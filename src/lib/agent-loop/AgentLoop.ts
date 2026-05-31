@@ -579,9 +579,13 @@ export class AgentLoop {
             if (tc.id && tc.name) {
               toolCallMap.set(tc.id, { id: tc.id, name: tc.name, args: [] });
             }
-            if (tc.id && tc.argumentsDelta) {
-              const acc = toolCallMap.get(tc.id);
-              if (acc) acc.args.push(tc.argumentsDelta);
+            // 累积 arguments：使用 tc.id，若为空则回退到 toolCallMap 中最后一个 key
+            if (tc.argumentsDelta) {
+              const effectiveId = tc.id || (toolCallMap.size > 0 ? [...toolCallMap.keys()].pop()! : "");
+              if (effectiveId) {
+                const acc = toolCallMap.get(effectiveId);
+                if (acc) acc.args.push(tc.argumentsDelta);
+              }
             }
             this.emit({
               type: "message_update",
@@ -610,7 +614,30 @@ export class AgentLoop {
     }
 
     // 使用 streamResult 中的 toolCalls（更完整）
-    const finalToolCalls = streamResult.toolCalls.length > 0 ? streamResult.toolCalls : toolCalls;
+    // 合并策略：优先使用 streamResult（来自 buildToolCallsFromAccumulators），
+    // 但如果 streamResult 的某个 tool call arguments 为空而 local 有内容，则补充
+    const finalToolCalls: ToolCall[] = [];
+    if (streamResult.toolCalls.length > 0) {
+      for (const stc of streamResult.toolCalls) {
+        if (stc.function.arguments.length > 0) {
+          finalToolCalls.push(stc);
+        } else {
+          // streamResult 的 arguments 为空，尝试从 local toolCallMap 补充
+          const localAcc = toolCallMap.get(stc.id);
+          if (localAcc && localAcc.args.join("").length > 0) {
+            finalToolCalls.push({
+              id: stc.id,
+              type: "function",
+              function: { name: stc.function.name, arguments: localAcc.args.join("") },
+            });
+          } else {
+            finalToolCalls.push(stc);
+          }
+        }
+      }
+    } else {
+      finalToolCalls.push(...toolCalls);
+    }
 
     // [DEBUG] 打印最终 tool calls 选择
     console.log('[DEBUG][AgentLoop] streamAssistantResponse 最终 tool calls:', {
