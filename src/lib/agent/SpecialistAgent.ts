@@ -12,6 +12,10 @@ import type { AgentId, AgentConfig, AgentCapability } from "@/types";
 import type { LLMConfig } from "@/lib/llm";
 import { getAgentToolDefinitions } from "./AgentTools";
 import { AgentLoop } from "@/lib/agent-loop/AgentLoop";
+import { restoreContext } from "@/lib/agent-loop/ContextRestorer";
+import { TranscriptRepository } from "@/lib/db/transcriptRepo";
+import { getDb } from "@/lib/db/database";
+import type { AgentMessage } from "@/lib/agent-loop/types";
 
 export class SpecialistAgent extends BaseAgent {
   readonly capabilities: AgentCapability[];
@@ -67,12 +71,58 @@ export class SpecialistAgent extends BaseAgent {
         // 获取工具定义
         const tools = getAgentToolDefinitions();
 
+        // 从数据库恢复上下文（重启后恢复之前的对话历史）
+        const chatId = context?.chatId as string | undefined;
+        let initialTranscript: AgentMessage[] | undefined;
+        if (chatId) {
+          initialTranscript = restoreContext(this.id, chatId);
+          if (initialTranscript.length > 0) {
+            console.log('[SpecialistAgent] 从数据库恢复上下文:', {
+              agentId: this.id,
+              chatId,
+              transcriptLength: initialTranscript.length,
+            });
+          }
+        }
+
+        // 构建持久化回调
+        const agentId = this.id;
+        const persistCallback = chatId
+          ? (msg: AgentMessage, seq: number) => {
+              try {
+                const db = getDb();
+                const repo = new TranscriptRepository(db);
+                repo.appendMessage(agentId, chatId, msg, seq);
+              } catch (err) {
+                console.error('[SpecialistAgent] transcript 持久化失败:', err);
+              }
+            }
+          : undefined;
+
+        // [DEBUG] 打印工具定义和 LLM 配置
+        console.log('[DEBUG][SpecialistAgent] AgentLoop 启动配置:', {
+          agentId: this.id,
+          agentName: this.name,
+          model: llmConfig.model,
+          endpoint: llmConfig.endpoint,
+          hasApiKey: !!llmConfig.apiKey,
+          toolCount: tools.length,
+          toolNames: tools.map(t => t.function.name),
+          systemPromptLength: systemPrompt.length,
+          systemPromptPreview: systemPrompt.slice(0, 200),
+          hasInitialTranscript: !!initialTranscript,
+          initialTranscriptLength: initialTranscript?.length ?? 0,
+          hasPersistCallback: !!persistCallback,
+        });
+
         // 使用 AgentLoop 驱动执行
         const loop = new AgentLoop({
           systemPrompt,
           llmConfig,
           tools,
           maxIterations: 50,
+          initialTranscript,
+          persistCallback,
         });
 
         const result = await loop.run(task);

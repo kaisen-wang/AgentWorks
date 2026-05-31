@@ -189,11 +189,23 @@ export function fromSDKStreamChunk(
       const name = tcDelta.function?.name ?? "";
       const argsDelta = tcDelta.function?.arguments ?? "";
 
+      // [DEBUG] 打印 tool call delta 详情
+      console.log('[DEBUG][TypeMappers] toolcall_delta:', {
+        id,
+        name,
+        argsDeltaLength: argsDelta.length,
+        argsDeltaPreview: argsDelta.slice(0, 100),
+        hasId: !!tcDelta.id,
+        hasName: !!tcDelta.function?.name,
+        hasArgs: !!tcDelta.function?.arguments,
+      });
+
       // 累积工具调用
       if (id && name) {
         // 新的工具调用开始
         if (!toolCallAccumulators.has(id)) {
           toolCallAccumulators.set(id, { id, name, argumentsChunks: [] });
+          console.log('[DEBUG][TypeMappers] 新 tool call 累积器创建:', { id, name });
         }
       }
 
@@ -222,14 +234,25 @@ export function fromSDKStreamChunk(
 export function buildToolCallsFromAccumulators(accumulators: Map<string, ToolCallAccumulator>): ToolCall[] {
   const result: ToolCall[] = [];
   for (const acc of accumulators.values()) {
+    const args = acc.argumentsChunks.join("");
     result.push({
       id: acc.id,
       type: "function" as const,
       function: {
         name: acc.name,
-        arguments: acc.argumentsChunks.join(""),
+        arguments: args,
       },
     });
+    // [DEBUG] 打印每个累积器构建的 tool call
+    console.log('[DEBUG][TypeMappers] buildToolCall:', {
+      id: acc.id,
+      name: acc.name,
+      chunkCount: acc.argumentsChunks.length,
+      totalArgsLength: args.length,
+      argsPreview: args.slice(0, 300),
+      isValidJSON: (() => { try { JSON.parse(args); return true; } catch { return false; } })(),
+    });
   }
+  console.log('[DEBUG][TypeMappers] buildToolCallsFromAccumulators 完成, 总数:', result.length);
   return result;
 }

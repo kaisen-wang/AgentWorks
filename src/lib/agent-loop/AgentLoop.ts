@@ -23,6 +23,7 @@ import type {
   IToolExecutor,
   LifecycleEvent,
   LoopToolExecutionResult,
+  PersistTranscriptFn,
   PrepareNextTurnFn,
   QueueDrainMode,
   ShouldStopAfterTurnFn,
@@ -102,6 +103,7 @@ export class AgentLoop {
 
   // 运行时状态
   private transcript: AgentMessage[] = [];
+  private transcriptSeq = 0; // 用于持久化的序列号
   private streamingMessage: AgentMessage | null = null;
   private pendingToolCalls: ToolCall[] = [];
   private errorMessage: string | null = null;
@@ -112,6 +114,9 @@ export class AgentLoop {
 
   // 运行控制
   private abortController: AbortController | null = null;
+
+  // 持久化回调
+  private readonly persistCallback?: PersistTranscriptFn;
 
   constructor(
     config: AgentLoopConfig,
@@ -132,6 +137,7 @@ export class AgentLoop {
     this.transformContext = config.transformContext;
     this.beforeToolCall = config.beforeToolCall;
     this.afterToolCall = config.afterToolCall;
+    this.persistCallback = config.persistCallback;
   }
 
   /**
@@ -160,11 +166,23 @@ export class AgentLoop {
 
     const signal = this.abortController.signal;
 
-    // 初始化 transcript
-    this.transcript = [
-      createMessage("system", this.config.systemPrompt),
-      createMessage("user", message),
-    ];
+    // 初始化 transcript：如果有预加载的 transcript（重启恢复），则使用它；否则从 system prompt 开始
+    if (this.config.initialTranscript && this.config.initialTranscript.length > 0) {
+      this.transcript = [...this.config.initialTranscript];
+      this.transcriptSeq = this.transcript.length;
+      // 追加新的 user 消息
+      const userMsg = createMessage("user", message);
+      this.transcript.push(userMsg);
+      this.persistAndAdvance(userMsg);
+    } else {
+      this.transcript = [
+        createMessage("system", this.config.systemPrompt),
+        createMessage("user", message),
+      ];
+      this.transcriptSeq = 0;
+      this.persistAndAdvance(this.transcript[0]);
+      this.persistAndAdvance(this.transcript[1]);
+    }
 
     // 发出 agent_start
     this.emit({
@@ -198,6 +216,7 @@ export class AgentLoop {
             for (const steeringMsg of pendingSteering) {
               const msg = createMessage("user", steeringMsg);
               this.transcript.push(msg);
+              this.persistAndAdvance(msg);
               this.emit({ type: "message_start", data: { role: "user" }, timestamp: Date.now() });
               this.emit({ type: "message_end", data: { message: msg }, timestamp: Date.now() });
             }
@@ -219,6 +238,7 @@ export class AgentLoop {
 
           if (assistantMessage.role === "assistant" && (assistantMessage.content || (assistantMessage.toolCalls && assistantMessage.toolCalls.length > 0))) {
             this.transcript.push(assistantMessage);
+            this.persistAndAdvance(assistantMessage);
           }
 
           // 检查错误/取消（status 可能被 streamAssistantResponse 内部的 error 事件修改）
@@ -241,6 +261,21 @@ export class AgentLoop {
           const toolCalls = assistantMessage.toolCalls ?? [];
           const toolResults: LoopToolExecutionResult[] = [];
           hasMoreToolCalls = false;
+
+          // [DEBUG] 打印 tool calls 检测结果
+          console.log('[DEBUG][AgentLoop] tool calls 检测:', {
+            turnNumber: this.currentTurn,
+            iteration: this.currentIteration,
+            toolCallCount: toolCalls.length,
+            toolCalls: toolCalls.map(tc => ({
+              id: tc.id,
+              name: tc.function.name,
+              argsLength: tc.function.arguments.length,
+              argsPreview: tc.function.arguments.slice(0, 200),
+            })),
+            assistantContentLength: assistantMessage.content?.length ?? 0,
+            assistantContentPreview: assistantMessage.content?.slice(0, 200) ?? '',
+          });
 
           if (toolCalls.length > 0) {
             // 执行工具调用
@@ -269,6 +304,17 @@ export class AgentLoop {
             for (const result of executedResults) {
               toolResults.push(result);
 
+              // [DEBUG] 打印工具执行结果
+              console.log('[DEBUG][AgentLoop] 工具执行结果:', {
+                toolCallId: result.toolCallId,
+                toolName: result.toolName,
+                isError: result.isError,
+                terminate: result.terminate,
+                duration: result.duration,
+                outputLength: result.output.length,
+                outputPreview: result.output.slice(0, 300),
+              });
+
               // 发出 tool_execution_end 事件
               this.emit({
                 type: "tool_execution_end",
@@ -283,6 +329,7 @@ export class AgentLoop {
                 isError: result.isError,
               });
               this.transcript.push(toolMsg);
+              this.persistAndAdvance(toolMsg);
               this.emit({ type: "message_start", data: { role: "tool" }, timestamp: Date.now() });
               this.emit({ type: "message_end", data: { message: toolMsg }, timestamp: Date.now() });
             }
@@ -346,6 +393,7 @@ export class AgentLoop {
           for (const followUpMsg of followUpMessages) {
             const msg = createMessage("user", followUpMsg);
             this.transcript.push(msg);
+            this.persistAndAdvance(msg);
             this.emit({ type: "message_start", data: { role: "user" }, timestamp: Date.now() });
             this.emit({ type: "message_end", data: { message: msg }, timestamp: Date.now() });
           }
@@ -448,6 +496,7 @@ export class AgentLoop {
 
   private resetState(): void {
     this.transcript = [];
+    this.transcriptSeq = 0;
     this.streamingMessage = null;
     this.pendingToolCalls = [];
     this.errorMessage = null;
@@ -459,6 +508,20 @@ export class AgentLoop {
 
   private emit(event: LifecycleEvent): void {
     this.eventEmitter.emit(event);
+  }
+
+  /**
+   * 持久化一条 transcript 消息并递增序列号
+   */
+  private persistAndAdvance(msg: AgentMessage): void {
+    if (this.persistCallback) {
+      try {
+        this.persistCallback(msg, this.transcriptSeq);
+      } catch (err) {
+        console.error('[AgentLoop] transcript 持久化失败:', err);
+      }
+    }
+    this.transcriptSeq++;
   }
 
   /**
@@ -542,6 +605,19 @@ export class AgentLoop {
 
     // 使用 streamResult 中的 toolCalls（更完整）
     const finalToolCalls = streamResult.toolCalls.length > 0 ? streamResult.toolCalls : toolCalls;
+
+    // [DEBUG] 打印最终 tool calls 选择
+    console.log('[DEBUG][AgentLoop] streamAssistantResponse 最终 tool calls:', {
+      streamResultToolCallCount: streamResult.toolCalls.length,
+      localToolCallMapCount: toolCalls.length,
+      finalToolCallCount: finalToolCalls.length,
+      usedSource: streamResult.toolCalls.length > 0 ? 'streamResult' : 'localToolCallMap',
+      finalToolCalls: finalToolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.function.name,
+        argsLength: tc.function.arguments.length,
+      })),
+    });
 
     const assistantMessage = createMessage("assistant", streamResult.content || content, {
       thinking: streamResult.thinking || thinking || undefined,

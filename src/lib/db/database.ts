@@ -270,7 +270,24 @@ function initializeSchema(db: Database.Database): void {
       updated_at INTEGER NOT NULL
     );
 
+    -- transcript 持久化表（用于重启后恢复 LLM 对话上下文）
+    CREATE TABLE IF NOT EXISTS transcripts (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      thinking TEXT,
+      tool_calls TEXT,
+      tool_call_id TEXT,
+      tool_name TEXT,
+      is_error INTEGER NOT NULL DEFAULT 0,
+      seq INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
     -- 索引
+    CREATE INDEX IF NOT EXISTS idx_transcripts_agent_chat ON transcripts(agent_id, chat_id, seq ASC);
     CREATE INDEX IF NOT EXISTS idx_tasks_assignee_priority ON tasks(assignee_id, priority DESC, created_at ASC);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);

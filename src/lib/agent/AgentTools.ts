@@ -144,6 +144,13 @@ export async function executeToolCall(
   toolName: string,
   argumentsJson: string
 ): Promise<ToolExecutionResult> {
+  // [DEBUG] 打印工具执行入口
+  console.log('[DEBUG][AgentTools] executeToolCall 入口:', {
+    toolName,
+    argsLength: argumentsJson.length,
+    argsPreview: argumentsJson.slice(0, 300),
+  });
+
   try {
     // 尝试解析 JSON，如果失败则提供详细错误信息
     let args;
@@ -165,29 +172,46 @@ export async function executeToolCall(
       };
     }
 
+    // [DEBUG] 打印解析后的参数
+    console.log('[DEBUG][AgentTools] JSON 解析成功:', {
+      toolName,
+      parsedArgs: args,
+    });
+
     switch (toolName) {
       case "write_file":
+        console.log('[DEBUG][AgentTools] 分发到 executeWriteFile:', { filePath: args.file_path, contentLength: args.content?.length });
         return await executeWriteFile(args.file_path, args.content);
 
       case "read_file":
+        console.log('[DEBUG][AgentTools] 分发到 executeReadFile:', { filePath: args.file_path });
         return await executeReadFile(args.file_path);
 
       case "edit_file":
+        console.log('[DEBUG][AgentTools] 分发到 executeEditFile:', { filePath: args.file_path, oldContentLength: args.old_content?.length, newContentLength: args.new_content?.length });
         return await executeEditFile(args.file_path, args.old_content, args.new_content);
 
       case "run_command":
+        console.log('[DEBUG][AgentTools] 分发到 executeRunCommand:', { command: args.command });
         return await executeRunCommand(args.command);
 
       case "install_skill":
+        console.log('[DEBUG][AgentTools] 分发到 executeInstallSkill:', { url: args.url, agentId: args.agent_id, scope: args.scope });
         return await executeInstallSkill(args.url, args.agent_id, args.scope, args.auto_install_dependencies);
 
       default:
+        console.error('[DEBUG][AgentTools] 未知工具:', toolName);
         return {
           success: false,
           error: `未知工具: ${toolName}`,
         };
     }
   } catch (error) {
+    console.error('[DEBUG][AgentTools] 工具执行异常:', {
+      toolName,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return {
       success: false,
       error: `工具执行失败: ${error instanceof Error ? error.message : String(error)}`,

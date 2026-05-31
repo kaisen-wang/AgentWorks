@@ -800,15 +800,20 @@ export class WorkflowEngine {
         apiKey: agent.config.llmApiKey || process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || "",
         model: agent.config.model,
       } : {
-        endpoint: process.env.NEXT_PUBLIC_DEEPSEEK_ENDPOINT || "https://api.deepseek.com/v1/chat/completions",
+        endpoint: process.env.NEXT_PUBLIC_DEEPSEEK_ENDPOINT || "https://api.deepseek.com/v1",
         apiKey: process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || "",
         model: agent.config.model,
       };
 
-      console.log('🔧 [LLM配置]', {
+      console.log('[DEBUG][WorkflowEngine] LLM配置:', {
+        agentId,
+        agentName: agent.name,
         endpoint: llmConfig?.endpoint,
         model: llmConfig?.model,
-        hasApiKey: !!llmConfig?.apiKey
+        hasApiKey: !!llmConfig?.apiKey,
+        apiKeyPrefix: llmConfig?.apiKey?.slice(0, 8) + '...',
+        agentConfigModel: agent.config.model,
+        agentConfigLlmEndpoint: agent.config.llmEndpoint,
       });
 
       // 执行 Agent 的 execute 方法

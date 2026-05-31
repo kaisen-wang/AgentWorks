@@ -119,6 +119,9 @@ export type ShouldStopAfterTurnFn = (
   context: TurnContext,
 ) => Promise<boolean> | boolean;
 
+/** Transcript 持久化回调 */
+export type PersistTranscriptFn = (message: AgentMessage, seq: number) => void;
+
 /** Agent Loop 完整配置 */
 export interface AgentLoopConfig {
   systemPrompt: string;
@@ -142,6 +145,10 @@ export interface AgentLoopConfig {
   steeringDrainMode?: QueueDrainMode;
   /** follow-up 队列排空模式，默认 "all" */
   followUpDrainMode?: QueueDrainMode;
+  /** 预加载的 transcript（用于重启后恢复上下文） */
+  initialTranscript?: AgentMessage[];
+  /** Transcript 持久化回调（每新增一条消息时调用） */
+  persistCallback?: PersistTranscriptFn;
 }
 
 // ============================================================

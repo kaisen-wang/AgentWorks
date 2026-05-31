@@ -65,6 +65,19 @@ export class DefaultStreamingEngine implements IStreamingEngine {
     // 传递 AbortSignal
     (createParams as unknown as Record<string, unknown>).signal = signal;
 
+    // [DEBUG] 打印 LLM 流式请求参数
+    console.log('[DEBUG][StreamingEngine] LLM 流式请求参数:', {
+      model: createParams.model,
+      messageCount: sdkMessages.length,
+      messageRoles: sdkMessages.map(m => m.role),
+      hasTools: !!(createParams.tools && createParams.tools.length > 0),
+      toolCount: createParams.tools?.length ?? 0,
+      toolNames: createParams.tools?.map(t => t.function?.name) ?? [],
+      toolChoice: createParams.tool_choice,
+      temperature: createParams.temperature,
+      maxTokens: createParams.max_tokens,
+    });
+
     const stream = await client.chat.completions.create(createParams);
 
     let content = "";
@@ -95,6 +108,22 @@ export class DefaultStreamingEngine implements IStreamingEngine {
     const toolCalls = buildToolCallsFromAccumulators(toolCallAccumulators);
     onEvent({ type: "done", usage });
 
+    // [DEBUG] 打印流式响应结果摘要
+    console.log('[DEBUG][StreamingEngine] 流式响应结果:', {
+      model,
+      contentLength: content.length,
+      contentPreview: content.slice(0, 200),
+      thinkingLength: thinking.length,
+      toolCallCount: toolCalls.length,
+      toolCalls: toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.function.name,
+        argsLength: tc.function.arguments.length,
+        argsPreview: tc.function.arguments.slice(0, 200),
+      })),
+      usage,
+    });
+
     return { content, thinking: thinking || undefined, toolCalls, usage, model };
   }
 
@@ -107,6 +136,8 @@ export class DefaultStreamingEngine implements IStreamingEngine {
     tools: ToolDefinition[],
     onEvent: (event: StreamEvent) => void,
   ): Promise<StreamResult> {
+    console.log('[DEBUG][StreamingEngine] 降级为非流式调用, tools数量:', tools.length);
+
     const response = await callLLM(messages, config, {
       tools: tools.length > 0 ? tools : undefined,
       toolChoice: tools.length > 0 ? "auto" : undefined,
@@ -118,6 +149,21 @@ export class DefaultStreamingEngine implements IStreamingEngine {
     }
 
     onEvent({ type: "done", usage: response.usage });
+
+    // [DEBUG] 打印非流式降级响应结果
+    console.log('[DEBUG][StreamingEngine] 非流式降级响应结果:', {
+      model: response.model,
+      contentLength: response.content.length,
+      contentPreview: response.content.slice(0, 200),
+      toolCallCount: response.toolCalls?.length ?? 0,
+      toolCalls: response.toolCalls?.map(tc => ({
+        id: tc.id,
+        name: tc.function.name,
+        argsLength: tc.function.arguments.length,
+        argsPreview: tc.function.arguments.slice(0, 200),
+      })),
+      usage: response.usage,
+    });
 
     return {
       content: response.content,

@@ -52,11 +52,29 @@ export class DefaultToolExecutor implements IToolExecutor {
     const toolName = toolCall.function.name;
     let args = toolCall.function.arguments;
 
+    // [DEBUG] 打印工具调用开始
+    console.log('[DEBUG][ToolExecutor] 工具调用开始:', {
+      toolCallId,
+      toolName,
+      argsLength: args.length,
+      argsPreview: args.slice(0, 300),
+      hasBeforeHook: !!hooks.beforeToolCall,
+      hasAfterHook: !!hooks.afterToolCall,
+    });
+
     // ---- PREPARE 阶段 ----
     // 解析 JSON 参数
     try {
       JSON.parse(args);
-    } catch {
+    } catch (parseErr) {
+      // [DEBUG] JSON 解析失败
+      console.error('[DEBUG][ToolExecutor] PREPARE 阶段 JSON 解析失败:', {
+        toolCallId,
+        toolName,
+        argsLength: args.length,
+        argsPreview: args.slice(0, 300),
+        error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
       return createErrorToolResult(
         toolCallId,
         toolName,
@@ -103,6 +121,12 @@ export class DefaultToolExecutor implements IToolExecutor {
     let isError = false;
     let terminate = false;
 
+    console.log('[DEBUG][ToolExecutor] EXECUTE 阶段开始:', {
+      toolCallId,
+      toolName,
+      argsPreview: args.slice(0, 200),
+    });
+
     try {
       const raw = await executeToolCall(toolName, args);
       if (raw.success) {
@@ -111,9 +135,22 @@ export class DefaultToolExecutor implements IToolExecutor {
         output = raw.error ?? "Unknown error";
         isError = true;
       }
+      console.log('[DEBUG][ToolExecutor] EXECUTE 阶段完成:', {
+        toolCallId,
+        toolName,
+        success: raw.success,
+        outputLength: output.length,
+        outputPreview: output.slice(0, 200),
+        isError,
+      });
     } catch (err) {
       output = err instanceof Error ? err.message : String(err);
       isError = true;
+      console.error('[DEBUG][ToolExecutor] EXECUTE 阶段异常:', {
+        toolCallId,
+        toolName,
+        error: output,
+      });
     }
 
     // ---- FINALIZE 阶段 ----
@@ -125,6 +162,15 @@ export class DefaultToolExecutor implements IToolExecutor {
       terminate,
       duration: Date.now() - startTime,
     };
+
+    console.log('[DEBUG][ToolExecutor] FINALIZE 阶段:', {
+      toolCallId,
+      toolName,
+      isError,
+      terminate,
+      duration: result.duration,
+      outputLength: output.length,
+    });
 
     // 调用 afterToolCall 钩子
     if (hooks.afterToolCall) {
