@@ -120,7 +120,7 @@ export type ShouldStopAfterTurnFn = (
 ) => Promise<boolean> | boolean;
 
 /** Transcript 持久化回调 */
-export type PersistTranscriptFn = (message: AgentMessage, seq: number) => void;
+export type PersistTranscriptFn = (message: AgentMessage, seq: number) => void | Promise<void>;
 
 /** Agent Loop 完整配置 */
 export interface AgentLoopConfig {

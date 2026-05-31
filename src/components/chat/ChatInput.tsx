@@ -3,11 +3,27 @@
 import { useState, useRef, useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
-import { workflowEngine } from "@/lib/workflow";
 import { parseNaturalLanguage } from "@/lib/nlu";
 import { IconBot, IconTask, IconChart, IconArchive, IconCollaborator, IconMoon, IconHelp, IconUser, IconFolder, IconShield, IconAlert, renderAvatarIcon } from "@/components/common/Icons";
 import { parseSlashCommand, executeCommand } from "@/lib/commands/SlashCommandRouter";
 import type { AgentId, ChatId, AgentRole, AgentCapability, MessageId } from "@/types";
+
+/** 通过 API Route 调用 WorkflowEngine（避免 better-sqlite3 进入客户端 bundle） */
+async function callWorkflow(action: string, params: Record<string, unknown>): Promise<void> {
+  try {
+    const res = await fetch("/api/workflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, params }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.error(`[Workflow API] ${action} failed:`, data.error);
+    }
+  } catch (err) {
+    console.error(`[Workflow API] ${action} error:`, err);
+  }
+}
 
 export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; replyToId?: MessageId | null; onReplySent?: () => void }) {
   const [input, setInput] = useState("");
@@ -102,7 +118,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
     sendMessage(chatId, "text", "user", text, { mentions, ...(replyToId ? { replyToId } : {}) });
     if (mentions.length > 0) {
       const taskContent = text.replace(/@\S+/g, "").trim();
-      for (const agentId of mentions) { const agent = agents[agentId]; if (agent?.role === "supervisor" && taskContent) { workflowEngine.assignTask(taskContent.slice(0, 30), taskContent, agentId, chatId); } }
+      for (const agentId of mentions) { const agent = agents[agentId]; if (agent?.role === "supervisor" && taskContent) { callWorkflow("assignTask", { taskTitle: taskContent.slice(0, 30), taskDescription: taskContent, assigneeId: agentId, chatId }); } }
     } else {
       // 自动触发聊天中所有 Agent 的回复
       const chat = chats[chatId];
@@ -132,9 +148,9 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
           });
           
           if (agent) {
-            // 使用 workflowEngine 触发 Agent 回复
+            // 通过 API Route 触发 Agent 回复（避免 better-sqlite3 进入客户端 bundle）
             console.log('✅ [调试] 触发Agent回复', { agentId: agent.id, agentName: agent.name });
-            workflowEngine.executeAgent(agent.id, text, chatId);
+            callWorkflow("executeAgent", { agentId: agent.id, message: text, chatId });
           }
         }
       } else {
@@ -226,7 +242,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
         const script = scripts.find((s) => s.name.includes(scriptName));
         if (script) {
           sendMessage(chatId, "system", "system", `正在运行剧本「${script.name}」...`);
-          workflowEngine.runScript(script.id, chatId, params.replacements as string | undefined);
+          callWorkflow("runScript", { scriptId: script.id, chatId, replacements: params.replacements as string | undefined });
         } else {
           sendMessage(chatId, "system", "system", `未找到剧本「${scriptName}」，可用的剧本: ${scripts.length > 0 ? scripts.map((s) => s.name).join("、") : "无"}`);
         }

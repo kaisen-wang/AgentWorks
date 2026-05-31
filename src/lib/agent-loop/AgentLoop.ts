@@ -516,7 +516,13 @@ export class AgentLoop {
   private persistAndAdvance(msg: AgentMessage): void {
     if (this.persistCallback) {
       try {
-        this.persistCallback(msg, this.transcriptSeq);
+        const result = this.persistCallback(msg, this.transcriptSeq);
+        // 处理 async 回调（动态 import 场景）
+        if (result instanceof Promise) {
+          result.catch((err) => {
+            console.error('[AgentLoop] transcript 持久化失败:', err);
+          });
+        }
       } catch (err) {
         console.error('[AgentLoop] transcript 持久化失败:', err);
       }

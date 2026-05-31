@@ -3,12 +3,12 @@
  *
  * 重启后从数据库加载 transcript，恢复 LLM 的对话上下文。
  * 当 transcript 超过 token 阈值时，自动压缩为摘要 + 最近 N 条消息。
+ *
+ * 注意：此模块使用动态 import 访问数据库，避免 better-sqlite3 被打包进客户端 bundle。
  */
 
 import type { AgentId, ChatId } from '@/types';
 import type { AgentMessage } from './types';
-import { TranscriptRepository } from '@/lib/db/transcriptRepo';
-import { getDb } from '@/lib/db/database';
 
 /** 上下文恢复配置 */
 export interface ContextRestoreConfig {
@@ -82,14 +82,21 @@ function generateSummaryPrompt(earlyMessages: AgentMessage[]): string {
 /**
  * 从数据库恢复上下文
  *
+ * 使用动态 import 访问数据库，避免 better-sqlite3 被打包进客户端 bundle。
+ *
  * @returns 恢复的 AgentMessage[]，可直接作为 AgentLoop 的 initialTranscript
  */
-export function restoreContext(
+export async function restoreContext(
   agentId: AgentId,
   chatId: ChatId,
   config?: ContextRestoreConfig,
-): AgentMessage[] {
+): Promise<AgentMessage[]> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
+
+  // 动态 import 避免 better-sqlite3 进入客户端 bundle
+  const { getDb } = await import('@/lib/db/database');
+  const { TranscriptRepository } = await import('@/lib/db/transcriptRepo');
+
   const db = getDb();
   const repo = new TranscriptRepository(db);
 
@@ -163,10 +170,12 @@ export function restoreContext(
 /**
  * 获取 transcript 的统计信息
  */
-export function getTranscriptStats(
+export async function getTranscriptStats(
   agentId: AgentId,
   chatId: ChatId,
-): { messageCount: number; tokenEstimate: number } {
+): Promise<{ messageCount: number; tokenEstimate: number }> {
+  const { getDb } = await import('@/lib/db/database');
+  const { TranscriptRepository } = await import('@/lib/db/transcriptRepo');
   const db = getDb();
   const repo = new TranscriptRepository(db);
   const transcript = repo.loadTranscript(agentId, chatId);

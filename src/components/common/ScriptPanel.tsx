@@ -11,7 +11,19 @@ import { useState } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import type { ScriptId } from "@/types";
-import { workflowEngine } from "@/lib/workflow/WorkflowEngine";
+
+/** 通过 API Route 调用 WorkflowEngine（避免 better-sqlite3 进入客户端 bundle） */
+async function callWorkflow(action: string, params: Record<string, unknown>): Promise<void> {
+  const res = await fetch("/api/workflow", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, params }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Workflow API error");
+  }
+}
 
 interface ScriptPanelProps {
   onClose: () => void;
@@ -41,7 +53,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
     setRunningId(scriptId);
     setMessage("");
     try {
-      await workflowEngine.runScript(scriptId, activeChatId, replacements || undefined);
+      await callWorkflow("runScript", { scriptId, chatId: activeChatId, replacements: replacements || undefined });
       setMessage("剧本执行完成");
     } catch (err) {
       setMessage(`执行失败: ${err instanceof Error ? err.message : "未知错误"}`);

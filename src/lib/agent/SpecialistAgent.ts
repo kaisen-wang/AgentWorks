@@ -12,9 +12,6 @@ import type { AgentId, AgentConfig, AgentCapability } from "@/types";
 import type { LLMConfig } from "@/lib/llm";
 import { getAgentToolDefinitions } from "./AgentTools";
 import { AgentLoop } from "@/lib/agent-loop/AgentLoop";
-import { restoreContext } from "@/lib/agent-loop/ContextRestorer";
-import { TranscriptRepository } from "@/lib/db/transcriptRepo";
-import { getDb } from "@/lib/db/database";
 import type { AgentMessage } from "@/lib/agent-loop/types";
 
 export class SpecialistAgent extends BaseAgent {
@@ -72,24 +69,32 @@ export class SpecialistAgent extends BaseAgent {
         const tools = getAgentToolDefinitions();
 
         // 从数据库恢复上下文（重启后恢复之前的对话历史）
+        // 使用动态 import 避免 better-sqlite3 被打包进客户端 bundle
         const chatId = context?.chatId as string | undefined;
         let initialTranscript: AgentMessage[] | undefined;
         if (chatId) {
-          initialTranscript = restoreContext(this.id, chatId);
-          if (initialTranscript.length > 0) {
-            console.log('[SpecialistAgent] 从数据库恢复上下文:', {
-              agentId: this.id,
-              chatId,
-              transcriptLength: initialTranscript.length,
-            });
+          try {
+            const { restoreContext } = await import('@/lib/agent-loop/ContextRestorer');
+            initialTranscript = await restoreContext(this.id, chatId);
+            if (initialTranscript.length > 0) {
+              console.log('[SpecialistAgent] 从数据库恢复上下文:', {
+                agentId: this.id,
+                chatId,
+                transcriptLength: initialTranscript.length,
+              });
+            }
+          } catch (err) {
+            console.warn('[SpecialistAgent] 上下文恢复失败（可能在客户端环境）:', err);
           }
         }
 
-        // 构建持久化回调
+        // 构建持久化回调（动态 import 避免客户端 bundle 问题）
         const agentId = this.id;
         const persistCallback = chatId
-          ? (msg: AgentMessage, seq: number) => {
+          ? async (msg: AgentMessage, seq: number) => {
               try {
+                const { getDb } = await import('@/lib/db/database');
+                const { TranscriptRepository } = await import('@/lib/db/transcriptRepo');
                 const db = getDb();
                 const repo = new TranscriptRepository(db);
                 repo.appendMessage(agentId, chatId, msg, seq);
