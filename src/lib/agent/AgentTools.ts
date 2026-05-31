@@ -82,13 +82,13 @@ export function getAgentToolDefinitions(): ToolDefinition[] {
       type: "function",
       function: {
         name: "run_command",
-        description: "执行shell命令。用于安装依赖、运行测试等。注意：只能执行安全的命令。",
+        description: "执行shell命令。支持大部分常用命令，如包管理、构建、测试、文件操作、Python/Node脚本执行等。危险命令（如rm -rf /、sudo、mkfs等）会被阻止。",
         parameters: {
           type: "object",
           properties: {
             command: {
               type: "string",
-              description: "要执行的命令，如 'npm install' 或 'npm run build'",
+              description: "要执行的shell命令，如 'npm install'、'python script.py'、'node -e \"console.log(1+1)\"'、'ls -la'、'git status' 等",
             },
           },
           required: ["command"],
