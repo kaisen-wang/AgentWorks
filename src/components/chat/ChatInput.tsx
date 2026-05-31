@@ -20,6 +20,15 @@ async function callWorkflow(action: string, params: Record<string, unknown>): Pr
       const data = await res.json().catch(() => ({}));
       console.error(`[Workflow API] ${action} failed:`, data.error);
     }
+    // API 调用完成后，从服务端同步最新消息到客户端 store
+    // 因为 API Route 运行在服务端，其 store.sendMessage() 写入的是服务端 Zustand 实例，
+    // 客户端无法直接感知变更，需要通过 /api/sync 重新拉取数据
+    try {
+      const { loadFromServer } = await import("@/stores/appStore");
+      await loadFromServer();
+    } catch (syncErr) {
+      console.warn("[Workflow API] 同步消息失败:", syncErr);
+    }
   } catch (err) {
     console.error(`[Workflow API] ${action} error:`, err);
   }
