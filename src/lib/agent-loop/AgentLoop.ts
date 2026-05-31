@@ -72,7 +72,9 @@ function convertToChatMessage(msg: AgentMessage): ChatMessage {
   if (msg.role === "assistant") {
     return {
       role: "assistant",
-      content: msg.content,
+      // 当 assistant 消息包含 tool_calls 且 content 为空时，
+      // 某些 OpenAI 兼容 API 要求 content 为 null
+      content: msg.content || (msg.toolCalls && msg.toolCalls.length > 0 ? null : msg.content),
       ...(msg.toolCalls && msg.toolCalls.length > 0 && { tool_calls: msg.toolCalls }),
     };
   }

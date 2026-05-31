@@ -27,6 +27,89 @@ const DEFAULT_CONFIG: Required<ContextRestoreConfig> = {
 };
 
 /**
+ * 找到安全的截断位置，确保不会破坏 assistant(tool_calls) + tool 消息的配对关系。
+ *
+ * OpenAI API 要求：
+ * 1. assistant 消息包含 tool_calls 时，后面必须紧跟对应的 tool 消息
+ * 2. tool 消息前面必须有包含对应 tool_call_id 的 assistant 消息
+ *
+ * 因此截断位置不能：
+ * - 在 assistant(tool_calls) 和其第一个 tool 消息之间
+ * - 在连续的 tool 消息中间（如果它们属于同一个 assistant 的 tool_calls）
+ * - 让 recentMessages 以孤立的 tool 消息开头
+ */
+function findSafeSplitIndex(messages: AgentMessage[], initialIndex: number): number {
+  if (initialIndex <= 0 || initialIndex >= messages.length) {
+    return initialIndex;
+  }
+
+  let idx = initialIndex;
+
+  // 情况1：splitIndex 处的消息是 tool 消息
+  // 这意味着它可能是一个 assistant(tool_calls) 的响应，
+  // 需要向前找到对应的 assistant 消息，把整个配对组都放入 recentMessages
+  if (messages[idx].role === 'tool') {
+    // 收集从 idx 开始的所有连续 tool 消息的 tool_call_id
+    const toolCallIds = new Set<string>();
+    let scanIdx = idx;
+    while (scanIdx < messages.length && messages[scanIdx].role === 'tool') {
+      if (messages[scanIdx].toolCallId) {
+        toolCallIds.add(messages[scanIdx].toolCallId!);
+      }
+      scanIdx++;
+    }
+
+    // 向前查找包含这些 tool_call_id 的 assistant 消息
+    for (let i = idx - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+        const hasMatch = msg.toolCalls.some(tc => toolCallIds.has(tc.id));
+        if (hasMatch) {
+          idx = i;
+          break;
+        }
+      }
+      // 如果遇到非 tool/非 assistant(tool_calls) 消息，停止向前搜索
+      if (msg.role !== 'assistant' && msg.role !== 'tool') {
+        break;
+      }
+    }
+  }
+
+  // 情况2：splitIndex-1 处是 assistant(tool_calls) 消息，但 splitIndex 处不是对应的 tool 消息
+  // 这意味着截断位置在 assistant(tool_calls) 和其 tool 响应之间
+  if (idx > 0) {
+    const prevMsg = messages[idx - 1];
+    if (prevMsg.role === 'assistant' && prevMsg.toolCalls && prevMsg.toolCalls.length > 0) {
+      // assistant(tool_calls) 必须和其 tool 响应在同一分区
+      // 把 splitIndex 移到 assistant 消息之前
+      idx = idx - 1;
+    }
+  }
+
+  // 递归检查：调整后可能又产生了新的问题（如 idx 处现在是 tool 消息）
+  // 但只递归一次避免无限循环
+  if (idx !== initialIndex && idx > 0 && messages[idx].role === 'tool') {
+    // 再次向前查找
+    for (let i = idx - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+        const toolMsg = messages[idx];
+        if (toolMsg.toolCallId && msg.toolCalls.some(tc => tc.id === toolMsg.toolCallId)) {
+          idx = i;
+          break;
+        }
+      }
+      if (msg.role !== 'assistant' && msg.role !== 'tool') {
+        break;
+      }
+    }
+  }
+
+  return idx;
+}
+
+/**
  * 估算 transcript 的 token 数
  */
 function estimateTokens(messages: AgentMessage[], tokensPerChar: number): number {
@@ -123,7 +206,14 @@ export async function restoreContext(
   }
 
   // 超过阈值，压缩：摘要 + 最近 N 条消息
-  const splitIndex = Math.max(0, transcript.length - cfg.recentMessageCount);
+  // 关键：必须保证 assistant(tool_calls) 和对应的 tool 消息在同一个分区，
+  // 否则 OpenAI API 会报错 "insufficient tool messages following tool_calls message"
+  let splitIndex = Math.max(0, transcript.length - cfg.recentMessageCount);
+
+  // 向前调整 splitIndex，确保不会在 assistant(tool_calls) 和其 tool 消息之间截断
+  // 也不会让 recentMessages 以孤立的 tool 消息开头
+  splitIndex = findSafeSplitIndex(transcript, splitIndex);
+
   const earlyMessages = transcript.slice(0, splitIndex);
   const recentMessages = transcript.slice(splitIndex);
 

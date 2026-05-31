@@ -1284,8 +1284,14 @@ export async function loadFromServer(): Promise<boolean> {
       }
 
       // 加载 messages（按 chatId 分组）
+      // 重要：必须深拷贝每个 chatId 对应的消息数组，否则 Zustand 浅比较
+      // 检测不到引用变化，React 组件不会重渲染
       if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
-        const messagesMap: Record<string, Message[]> = { ...state.messages };
+        const messagesMap: Record<string, Message[]> = {};
+        // 先深拷贝现有消息
+        for (const chatId of Object.keys(state.messages)) {
+          messagesMap[chatId] = [...state.messages[chatId]];
+        }
         for (const msg of data.messages) {
           if (!messagesMap[msg.chatId]) {
             messagesMap[msg.chatId] = [];

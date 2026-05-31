@@ -45,7 +45,7 @@ const DEFAULT_CONFIG: Partial<LLMConfig> = {
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  content: string | null;
   name?: string; // for tool messages
   tool_call_id?: string; // for tool messages
   tool_calls?: ToolCall[]; // for assistant messages with tool calls

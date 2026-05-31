@@ -38,17 +38,20 @@ export function toSDKMessages(messages: ChatMessage[]): ChatCompletionMessagePar
       case "system":
         return {
           role: "system" as const,
-          content: msg.content,
+          content: msg.content ?? "",
         };
       case "user":
         return {
           role: "user" as const,
-          content: msg.content,
+          content: msg.content ?? "",
         };
       case "assistant":
         return {
           role: "assistant" as const,
-          content: msg.content,
+          // 当 assistant 消息包含 tool_calls 且 content 为空时，
+          // 某些 OpenAI 兼容 API（如 DeepSeek）要求 content 为 null，
+          // 否则会报 400 错误
+          content: msg.content || (msg.tool_calls && msg.tool_calls.length > 0 ? null : msg.content),
           ...(msg.tool_calls && msg.tool_calls.length > 0
             ? {
                 tool_calls: msg.tool_calls.map(
@@ -67,7 +70,7 @@ export function toSDKMessages(messages: ChatMessage[]): ChatCompletionMessagePar
       case "tool":
         return {
           role: "tool" as const,
-          content: msg.content,
+          content: msg.content ?? "",
           tool_call_id: msg.tool_call_id ?? "",
         };
     }
