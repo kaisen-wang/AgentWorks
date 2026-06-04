@@ -190,7 +190,7 @@ await toolRegistry.execute('bash', {
 | **Edit** | 精确字符串替换/批量替换 | 变更校验 |
 | **Bash** | 执行系统命令 | 沙箱隔离、超时控制 |
 
-> 📚 详细使用文档请参阅 [.codeartsdoer/docs/global-tools.md](./docs/global-tools.md)
+> 📚 详细使用文档请参阅 [./docs/global-tools.md](./docs/global-tools.md)
 
 ## 需求覆盖矩阵
 
