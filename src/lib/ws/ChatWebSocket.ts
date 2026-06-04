@@ -217,7 +217,11 @@ export type PushEventType =
   | "report_resolved"
   | "agent_status_changed"
   | "budget_alert"
-  | "urgent_report";
+  | "urgent_report"
+  | "member_added"
+  | "member_removed"
+  | "member_role_changed"
+  | "mention_all";
 
 /** 推送事件 */
 export interface PushEvent {

@@ -56,6 +56,51 @@ export async function deleteChat(id: string): Promise<{ success: boolean; error?
 }
 
 /**
+ * 更新会话
+ */
+export async function updateChat(chat: Chat): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getDb();
+    const repo = new ChatRepository(db);
+    repo.update(chat);
+    return { success: true };
+  } catch (error) {
+    console.error("更新会话失败:", error);
+    return { success: false, error: "更新失败" };
+  }
+}
+
+/**
+ * 添加成员到会话
+ */
+export async function addMember(chatId: string, member: ChatMember): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getDb();
+    const repo = new ChatRepository(db);
+    repo.addMember(chatId, member);
+    return { success: true };
+  } catch (error) {
+    console.error("添加成员失败:", error);
+    return { success: false, error: "添加成员失败" };
+  }
+}
+
+/**
+ * 从会话移除成员
+ */
+export async function removeMember(chatId: string, memberId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = getDb();
+    const repo = new ChatRepository(db);
+    repo.removeMember(chatId, memberId);
+    return { success: true };
+  } catch (error) {
+    console.error("移除成员失败:", error);
+    return { success: false, error: "移除成员失败" };
+  }
+}
+
+/**
  * 获取指定会话的所有消息
  */
 export async function getMessages(chatId: string): Promise<{ messages: Message[]; error?: string }> {

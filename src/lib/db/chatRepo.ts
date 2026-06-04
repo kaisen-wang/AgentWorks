@@ -9,7 +9,12 @@ import type { ChatId, Chat, ChatMember, ChatType } from '@/types';
 export interface ChatRecord {
   conversation_id: string;
   type: string;
+  name: string;
+  description: string;
+  owner_id: string | null;
   project_id: string | null;
+  announcement: string;
+  announcement_at: number | null;
   members: string;
   created_at: number;
 }
@@ -66,9 +71,9 @@ export class ChatRepository implements IChatRepository {
   create(chat: Chat): void {
     const stmt = this.db.prepare(`
       INSERT INTO conversations (
-        conversation_id, type, project_id, members, created_at
+        conversation_id, type, name, description, owner_id, project_id, members, created_at
       ) VALUES (
-        @conversationId, @type, @projectId, @members, @createdAt
+        @conversationId, @type, @name, @description, @ownerId, @projectId, @members, @createdAt
       )
     `);
 
@@ -83,6 +88,9 @@ export class ChatRepository implements IChatRepository {
     const stmt = this.db.prepare(`
       UPDATE conversations SET
         type = @type,
+        name = @name,
+        description = @description,
+        owner_id = @ownerId,
         project_id = @projectId,
         members = @members
       WHERE conversation_id = @conversationId
@@ -139,15 +147,20 @@ export class ChatRepository implements IChatRepository {
   private mapRowToChat(row: ChatRecord): Chat {
     const members: ChatMember[] = JSON.parse(row.members || '[]');
 
-    // 生成会话名称
-    const name = members.length > 0 
+    // 优先使用数据库中存储的 name，若为空则用成员名拼接
+    const name = row.name || (members.length > 0
       ? members.map(m => m.name).join(', ')
-      : 'Unknown';
+      : 'Unknown');
 
     return {
       id: row.conversation_id,
       type: row.type as ChatType,
       name,
+      description: row.description || undefined,
+      announcement: row.announcement || undefined,
+      announcementAt: row.announcement_at || undefined,
+      ownerId: row.owner_id || undefined,
+      projectId: row.project_id || undefined,
       members,
       createdAt: row.created_at,
     };
@@ -160,7 +173,12 @@ export class ChatRepository implements IChatRepository {
     return {
       conversationId: chat.id,
       type: chat.type,
-      projectId: null, // 暂不支持项目关联
+      name: chat.name,
+      description: chat.description || '',
+      announcement: chat.announcement || '',
+      announcementAt: chat.announcementAt || null,
+      ownerId: chat.ownerId || null,
+      projectId: chat.projectId || null,
       members: JSON.stringify(chat.members),
       createdAt: chat.createdAt,
     };

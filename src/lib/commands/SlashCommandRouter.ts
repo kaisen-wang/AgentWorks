@@ -29,6 +29,10 @@ export type CommandType =
   | "urgent"
   | "invite"
   | "rest_mode"
+  | "create_group"
+  | "add_member"
+  | "remove_member"
+  | "members"
   | "unknown";
 
 /** 命令解析结果 */
@@ -69,6 +73,10 @@ export function parseSlashCommand(input: string): ParsedCommand | null {
     urgent: "urgent",
     invite: "invite",
     rest_mode: "rest_mode",
+    create_group: "create_group",
+    add_member: "add_member",
+    remove_member: "remove_member",
+    members: "members",
   };
 
   return {
@@ -283,6 +291,87 @@ export async function executeCommand(
       return { success: true, message: "休息模式已开启，所有上报将转给值班主管" };
     }
 
+    case "create_group": {
+      // /create_group <群名> @Agent1 @Agent2 ...
+      if (!parsed.args) {
+        return { success: false, message: "用法: /create_group <群名> @Agent1 @Agent2 ..." };
+      }
+      const mentionMatches = parsed.args.matchAll(/@(\S+)/g);
+      const agentNames = Array.from(mentionMatches).map((m) => m[1]);
+      const nameMatch = parsed.args.match(/^([^@]+)/);
+      const groupName = (nameMatch?.[1] || "新群聊").trim();
+      if (agentNames.length === 0) {
+        return { success: false, message: "至少需要 @一个 Agent，用法: /create_group <群名> @Agent1 @Agent2" };
+      }
+      const foundAgents = agentNames
+        .map((n) => Object.values(store.agents).find((a) => a.name === n))
+        .filter(Boolean);
+      if (foundAgents.length === 0) {
+        return { success: false, message: `未找到指定的 Agent: ${agentNames.join(", ")}` };
+      }
+      const members = [
+        { id: "user" as const, name: "你", avatar: "user", role: "owner" as const },
+        ...foundAgents.map((a) => ({ id: a!.id, name: a!.name, avatar: a!.avatar, role: "member" as const })),
+      ];
+      const chat = store.createChat("group", groupName, members);
+      store.setActiveChat(chat.id);
+      return { success: true, message: `已创建群聊「${groupName}」(${members.length} 人)`, data: { chatId: chat.id } };
+    }
+
+    case "add_member": {
+      // /add_member @Agent名
+      const chat = store.chats[chatId];
+      if (!chat || chat.type !== "group") {
+        return { success: false, message: "当前不在群聊中，/add_member 仅在群聊中可用" };
+      }
+      const agentName = parsed.args.replace("@", "").trim();
+      if (!agentName) {
+        return { success: false, message: "用法: /add_member @Agent名" };
+      }
+      const agent = Object.values(store.agents).find((a) => a.name === agentName);
+      if (!agent) {
+        return { success: false, message: `Agent "${agentName}" 不存在` };
+      }
+      if (chat.members.some((m) => m.id === agent.id)) {
+        return { success: false, message: `${agent.name} 已在群中` };
+      }
+      store.addMemberToChat(chatId, { id: agent.id, name: agent.name, avatar: agent.avatar, role: "member" });
+      return { success: true, message: `已将 ${agent.name} 添加到群聊` };
+    }
+
+    case "remove_member": {
+      // /remove_member @Agent名
+      const chat = store.chats[chatId];
+      if (!chat || chat.type !== "group") {
+        return { success: false, message: "当前不在群聊中，/remove_member 仅在群聊中可用" };
+      }
+      const agentName = parsed.args.replace("@", "").trim();
+      if (!agentName) {
+        return { success: false, message: "用法: /remove_member @Agent名" };
+      }
+      const member = chat.members.find((m) => m.name === agentName);
+      if (!member) {
+        return { success: false, message: `"${agentName}" 不在群中` };
+      }
+      if (member.role === "owner") {
+        return { success: false, message: "不能移除群主" };
+      }
+      store.removeMemberFromChat(chatId, member.id);
+      return { success: true, message: `已将 ${member.name} 移出群聊` };
+    }
+
+    case "members": {
+      const chat = store.chats[chatId];
+      if (!chat || chat.type !== "group") {
+        return { success: false, message: "当前不在群聊中，/members 仅在群聊中可用" };
+      }
+      const roleLabels: Record<string, string> = { owner: "群主", member: "成员", readonly: "只读", external: "外部" };
+      const list = chat.members
+        .map((m) => `  ${m.id === "user" ? "👤" : "🤖"} ${m.name} [${roleLabels[m.role] || m.role}]`)
+        .join("\n");
+      return { success: true, message: `群聊「${chat.name}」成员 (${chat.members.length}):\n${list}` };
+    }
+
     case "help": {
       return {
         success: true,
@@ -296,6 +385,10 @@ export async function executeCommand(
 /exempt Agent名 原因 — 申请管理幅度临时豁免
 /urgent — 标记下一条上报为紧急
 /invite 协作者名称 — 邀请外部协作者
+/create_group 群名 @Agent1 @Agent2 — 创建群聊
+/add_member @Agent名 — 向当前群聊添加成员
+/remove_member @Agent名 — 从当前群聊移除成员
+/members — 查看当前群聊成员列表
 /rest_mode — 开启/关闭休息模式
 /help — 显示帮助信息`,
       };

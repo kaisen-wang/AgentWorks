@@ -14,6 +14,7 @@ import type {
 import * as agentsActions from "@/actions/agents";
 import * as tasksActions from "@/actions/tasks";
 import * as chatActions from "@/actions/chat";
+import { emitPushEvent } from "@/lib/ws/ChatWebSocket";
 
 
 // ============================================================
@@ -74,12 +75,18 @@ export interface AppState {
   setActiveChat: (id: ChatId) => void;
   addMemberToChat: (chatId: ChatId, member: ChatMember) => void;
   removeMemberFromChat: (chatId: ChatId, memberId: string) => void;
+  updateMemberRole: (chatId: ChatId, memberId: string, role: ChatMember["role"]) => void;
+  markChatAsRead: (chatId: ChatId) => void;
 
   // --- 消息 ---
   messages: Record<ChatId, Message[]>;
   sendMessage: (chatId: ChatId, type: MessageType, senderId: AgentId | "user" | "system", content: string, extra?: Partial<Message>) => Message;
   resolveReportCard: (chatId: ChatId, messageId: MessageId, optionId: string) => void;
   resolveBudgetAlert: (chatId: ChatId, messageId: MessageId, optionId: string) => void; // SOLO-03
+  revokeMessage: (chatId: ChatId, messageId: MessageId) => void;
+  markMessageAsRead: (chatId: ChatId, messageId: MessageId, memberId: string) => void;
+  toggleChatPinned: (chatId: ChatId) => void;
+  toggleChatMuted: (chatId: ChatId) => void;
 
   // --- 任务 ---
   tasks: Record<TaskId, Task>;
@@ -459,10 +466,18 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   createChat: (type, name, members) => {
     const id = uuidv4();
-    const chat: Chat = { id, type, name, members, createdAt: Date.now() };
+    // 自动设置 ownerId：群聊取 role=owner 的成员 ID
+    const owner = members.find((m) => m.role === "owner");
+    const chat: Chat = { id, type, name, members, ownerId: owner?.id, createdAt: Date.now() };
     set((s: AppState) => ({ chats: { ...s.chats, [id]: chat } }));
     // 持久化到数据库
     chatActions.createChat(chat).catch((err) => console.error("持久化会话失败:", err));
+    // 群聊创建时发送系统消息
+    if (type === "group") {
+      const sysMsgId = uuidv4();
+      const sysMsg: Message = { id: sysMsgId, chatId: id, type: "system", senderId: "system", content: `群聊「${name}」已创建，${members.length} 个成员`, timestamp: Date.now() };
+      set((s: AppState) => ({ messages: { ...s.messages, [id]: [...(s.messages[id] || []), sysMsg] } }));
+    }
     return chat;
   },
 
@@ -475,22 +490,45 @@ export const useAppStore = create<AppState>()((set, get) => ({
     chatActions.deleteChat(id).catch((err) => console.error("删除会话失败:", err));
   },
 
-  setActiveChat: (id) => set({ activeChatId: id }),
+  setActiveChat: (id) => set((s: AppState) => ({
+    activeChatId: id,
+    // 切换到该会话时自动标记已读
+    chats: s.chats[id] ? { ...s.chats, [id]: { ...s.chats[id], unreadCount: 0 } } : s.chats,
+    // 自动标记所有消息为当前用户已读
+    messages: s.messages[id] ? {
+      ...s.messages,
+      [id]: s.messages[id].map((m) => ({
+        ...m,
+        readBy: [...new Set([...(m.readBy || []), "user"])],
+      })),
+    } : s.messages,
+  })),
 
   addMemberToChat: (chatId, member) => {
+    // 自动设置 joinedAt
+    const memberWithTime = member.joinedAt ? member : { ...member, joinedAt: Date.now() };
     set((s: AppState) => {
       const chat = s.chats[chatId];
       if (!chat) return s;
+      // 去重：已存在则不添加
+      if (chat.members.some((m) => m.id === member.id)) return s;
       return {
         chats: {
           ...s.chats,
-          [chatId]: { ...chat, members: [...chat.members, member] },
+          [chatId]: { ...chat, members: [...chat.members, memberWithTime] },
         },
       };
     });
+    chatActions.addMember(chatId, memberWithTime).catch((err) => console.error("持久化添加成员失败:", err));
+    emitPushEvent("member_added", memberWithTime, chatId);
+    // 发送系统通知消息
+    const sysMsgId = uuidv4();
+    const sysMsg: Message = { id: sysMsgId, chatId, type: "system", senderId: "system", content: `${memberWithTime.name} 加入了群聊`, timestamp: Date.now() };
+    set((s: AppState) => ({ messages: { ...s.messages, [chatId]: [...(s.messages[chatId] || []), sysMsg] } }));
   },
 
   removeMemberFromChat: (chatId, memberId) => {
+    const memberName = useAppStore.getState().chats[chatId]?.members.find((m) => m.id === memberId)?.name;
     set((s: AppState) => {
       const chat = s.chats[chatId];
       if (!chat) return s;
@@ -499,6 +537,64 @@ export const useAppStore = create<AppState>()((set, get) => ({
           ...s.chats,
           [chatId]: { ...chat, members: chat.members.filter((m) => m.id !== memberId) },
         },
+      };
+    });
+    chatActions.removeMember(chatId, memberId).catch((err) => console.error("持久化移除成员失败:", err));
+    emitPushEvent("member_removed", { memberId }, chatId);
+    // 发送系统通知消息
+    if (memberName) {
+      const sysMsgId = uuidv4();
+      const sysMsg: Message = { id: sysMsgId, chatId, type: "system", senderId: "system", content: `${memberName} 离开了群聊`, timestamp: Date.now() };
+      set((s: AppState) => ({ messages: { ...s.messages, [chatId]: [...(s.messages[chatId] || []), sysMsg] } }));
+    }
+  },
+
+  updateMemberRole: (chatId, memberId, role) => {
+    let memberName = "";
+    let oldRole = "";
+    const roleLabels: Record<string, string> = { owner: "群主", member: "成员", readonly: "只读", external: "外部" };
+    set((s: AppState) => {
+      const chat = s.chats[chatId];
+      if (!chat) return s;
+      const member = chat.members.find((m) => m.id === memberId);
+      if (!member || member.role === role) return s;
+      // 群主降级：仅当群中已有其他 owner 时允许（转让群主场景）
+      if (member.role === "owner" && role !== "owner") {
+        const otherOwner = chat.members.find((m) => m.role === "owner" && m.id !== memberId);
+        if (!otherOwner) return s;
+      }
+      memberName = member.name;
+      oldRole = member.role;
+      return {
+        chats: {
+          ...s.chats,
+          [chatId]: {
+            ...chat,
+            members: chat.members.map((m) => m.id === memberId ? { ...m, role } : m),
+          },
+        },
+      };
+    });
+    // 持久化：更新整个 chat 对象
+    const updatedChat = useAppStore.getState().chats[chatId];
+    if (updatedChat) {
+      chatActions.updateChat(updatedChat).catch((err) => console.error("持久化角色变更失败:", err));
+    }
+    emitPushEvent("member_role_changed", { memberId, role }, chatId);
+    // 发送系统通知消息
+    if (memberName) {
+      const sysMsgId = uuidv4();
+      const sysMsg: Message = { id: sysMsgId, chatId, type: "system", senderId: "system", content: `${memberName} 的角色从 ${roleLabels[oldRole] || oldRole} 变更为 ${roleLabels[role] || role}`, timestamp: Date.now() };
+      set((s: AppState) => ({ messages: { ...s.messages, [chatId]: [...(s.messages[chatId] || []), sysMsg] } }));
+    }
+  },
+
+  markChatAsRead: (chatId) => {
+    set((s: AppState) => {
+      const chat = s.chats[chatId];
+      if (!chat) return s;
+      return {
+        chats: { ...s.chats, [chatId]: { ...chat, unreadCount: 0 } },
       };
     });
   },
@@ -531,13 +627,81 @@ export const useAppStore = create<AppState>()((set, get) => ({
               ...s.chats[chatId],
               lastMessage: content.slice(0, 50),
               lastMessageTime: Date.now(),
+              // 非当前活跃会话且非用户自己发送的消息，增加未读计数（免打扰模式不增加）
+              unreadCount: (s.chats[chatId].unreadCount || 0) + (s.activeChatId !== chatId && senderId !== "user" && !s.chats[chatId].muted ? 1 : 0),
             },
           }
         : s.chats,
     }));
     // 持久化消息到数据库
     chatActions.createMessage(msg).catch((err) => console.error("持久化消息失败:", err));
+    // 触发推送事件，通知其他客户端
+    emitPushEvent("new_message", msg, chatId);
+    // @all 全员提及：群聊中包含 @all 时触发全员通知
+    if (content.includes("@all")) {
+      const chat = get().chats[chatId];
+      if (chat?.type === "group") {
+        emitPushEvent("mention_all", { chatId, senderId, content: content.slice(0, 100) }, chatId);
+      }
+    }
     return msg;
+  },
+
+  revokeMessage: (chatId, messageId) => {
+    set((s: AppState) => {
+      const msgs = s.messages[chatId];
+      if (!msgs) return s;
+      const msg = msgs.find((m) => m.id === messageId);
+      if (!msg || msg.revoked) return s;
+      // 仅允许撤回 2 分钟内发送的消息
+      if (Date.now() - msg.timestamp > 2 * 60 * 1000) return s;
+      return {
+        messages: {
+          ...s.messages,
+          [chatId]: msgs.map((m) => m.id === messageId ? { ...m, revoked: true, content: "此消息已撤回" } : m),
+        },
+      };
+    });
+    emitPushEvent("new_message", { chatId, messageId, revoked: true }, chatId);
+  },
+
+  markMessageAsRead: (chatId, messageId, memberId) => {
+    set((s: AppState) => {
+      const msgs = s.messages[chatId];
+      if (!msgs) return s;
+      return {
+        messages: {
+          ...s.messages,
+          [chatId]: msgs.map((m) =>
+            m.id === messageId
+              ? { ...m, readBy: [...new Set([...(m.readBy || []), memberId])] }
+              : m
+          ),
+        },
+      };
+    });
+  },
+
+  toggleChatPinned: (chatId) => {
+    set((s: AppState) => {
+      const chat = s.chats[chatId];
+      if (!chat) return s;
+      const updated = { ...chat, pinned: !chat.pinned };
+      return { chats: { ...s.chats, [chatId]: updated } };
+    });
+    const chat = get().chats[chatId];
+    chatActions.updateChat(chat).catch((err) => console.error("持久化置顶状态失败:", err));
+  },
+
+  toggleChatMuted: (chatId) => {
+    set((s: AppState) => {
+      const chat = s.chats[chatId];
+      if (!chat) return s;
+      const updated = { ...chat, muted: !chat.muted };
+      return { chats: { ...s.chats, [chatId]: updated } };
+    });
+    const chat = get().chats[chatId];
+    chatActions.updateChat(chat).catch((err) => console.error("持久化免打扰状态失败:", err));
   },
 
   resolveReportCard: (chatId, messageId, optionId) => {

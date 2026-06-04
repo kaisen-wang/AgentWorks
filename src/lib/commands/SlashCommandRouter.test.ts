@@ -76,4 +76,32 @@ describe("parseSlashCommand", () => {
     expect(result).not.toBeNull();
     expect(result!.type).toBe("new_task");
   });
+
+  it("解析 /create_group 命令", () => {
+    const result = parseSlashCommand("/create_group 作战室 @Agent1 @Agent2");
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("create_group");
+    expect(result!.args).toBe("作战室 @Agent1 @Agent2");
+  });
+
+  it("解析 /add_member 命令", () => {
+    const result = parseSlashCommand("/add_member @Agent1");
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("add_member");
+    expect(result!.args).toBe("@Agent1");
+  });
+
+  it("解析 /remove_member 命令", () => {
+    const result = parseSlashCommand("/remove_member @Agent1");
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("remove_member");
+    expect(result!.args).toBe("@Agent1");
+  });
+
+  it("解析 /members 命令", () => {
+    const result = parseSlashCommand("/members");
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("members");
+    expect(result!.args).toBe("");
+  });
 });

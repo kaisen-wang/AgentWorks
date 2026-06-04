@@ -31,9 +31,55 @@ export function useWebSocket() {
       // 处理推送事件，更新 store
       if (event.chatId) {
         switch (event.event) {
-          case "new_message":
-            // 新消息已由 sendMessage 处理，此处可触发通知
+          case "new_message": {
+            // 新消息已由 sendMessage 处理，此处可触发通知（免打扰模式不通知）
+            const chat = useAppStore.getState().chats[event.chatId];
+            if (!chat?.muted && typeof Notification !== "undefined" && Notification.permission === "granted") {
+              const msgData = event.data as { senderId?: string; content?: string };
+              if (msgData?.content && msgData.senderId !== "user") {
+                new Notification("新消息", { body: msgData.content.slice(0, 80), tag: "new-msg" });
+              }
+            }
             break;
+          }
+          case "member_added": {
+            // 成员加入通知
+            const member = event.data as { id: string; name: string };
+            if (member?.name) {
+              if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+                new Notification("成员加入", { body: `${member.name} 加入了群聊`, tag: "member-added" });
+              }
+            }
+            break;
+          }
+          case "member_removed": {
+            // 成员移除通知
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification("成员离开", { body: "有成员离开了群聊", tag: "member-removed" });
+            }
+            break;
+          }
+          case "member_role_changed": {
+            // 角色变更通知
+            const data = event.data as { memberId: string; role: string };
+            if (data?.role) {
+              if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+                new Notification("角色变更", { body: `成员角色变更为 ${data.role}`, tag: "role-changed" });
+              }
+            }
+            break;
+          }
+          case "mention_all": {
+            // @all 全员提及通知
+            const mentionData = event.data as { chatId: string; senderId: string; content: string };
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification("全员提及", {
+                body: mentionData?.content || "有人@了所有人",
+                tag: "mention-all",
+              });
+            }
+            break;
+          }
           case "task_status_changed":
             // 任务状态变更通知
             break;
@@ -62,7 +108,15 @@ export function useWebSocket() {
         // 处理来自服务端的实时消息
         if (msg.type === "chat_message" && msg.payload) {
           const payload = msg.payload as { chatId: string; message: unknown };
-          // 消息已由发送方写入 store，此处处理其他客户端的消息
+          // 其他客户端发送的消息，写入 store
+          const store = useAppStore.getState();
+          const existingMessages = store.messages[payload.chatId] || [];
+          const msgData = payload.message as { id?: string };
+          // 避免重复：如果消息已存在则跳过
+          if (msgData?.id && !existingMessages.some((m) => m.id === msgData.id)) {
+            // 触发推送事件，让 UI 更新
+            emitPushEvent("new_message", payload.message, payload.chatId);
+          }
         }
       },
       onStateChange: (state) => {

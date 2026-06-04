@@ -7,6 +7,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { IconGroupChat, IconUser, renderAvatarIcon } from "@/components/common/Icons";
 import { useWebSocket } from "@/lib/ws/useWebSocket";
+import { GroupDetailPanel } from "./GroupDetailPanel";
 import type { ChatId, MessageId, Message } from "@/types";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "";
@@ -18,6 +19,9 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
   const agents = useAppStore((s: AppState) => s.agents);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [replyingTo, setReplyingTo] = useState<MessageId | null>(null);
+  const [showGroupDetail, setShowGroupDetail] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { isConnected } = useWebSocket();
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
@@ -76,6 +80,28 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
             </div>
           )}
         </div>
+        {/* 消息搜索按钮 */}
+        <button
+          onClick={() => { setShowSearch(!showSearch); setSearchQuery(""); }}
+          className={`text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors ml-1 ${showSearch ? "text-[var(--accent)]" : ""}`}
+          title="搜索消息"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <circle cx="6" cy="6" r="4"/><path d="M9.5 9.5L13 13"/>
+          </svg>
+        </button>
+        {/* 群聊设置按钮 */}
+        {chat.type === "group" && (
+          <button
+            onClick={() => setShowGroupDetail(true)}
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors ml-1"
+            title="群聊详情"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <circle cx="7" cy="7" r="5"/><path d="M7 5V7.5L8.5 8.5"/>
+            </svg>
+          </button>
+        )}
         {/* ACT-03: 活跃 Agent 状态指示器 */}
         {activeAgentStatuses.length > 0 && (
           <div className="flex items-center gap-1.5 ml-1">
@@ -94,6 +120,48 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
         )}
       </div>
 
+      {/* 消息搜索栏 */}
+      {showSearch && (
+        <div className="px-5 py-2 glass-surface flex-shrink-0 flex items-center gap-2">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="var(--text-muted)" strokeWidth="1.2">
+            <circle cx="6" cy="6" r="4"/><path d="M9.5 9.5L13 13"/>
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索消息..."
+            className="flex-1 bg-transparent text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)] outline-none"
+            autoFocus
+          />
+          {searchQuery && (
+            <span className="text-[9px] text-[var(--text-muted)] tabular-nums">
+              {messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} 条结果
+            </span>
+          )}
+          <button onClick={() => { setShowSearch(false); setSearchQuery(""); }} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M1 1L9 9M9 1L1 9"/>
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* 群公告横幅 */}
+      {chat.type === "group" && chat.announcement && (
+        <div className="px-5 py-2 glass-surface flex-shrink-0 flex items-center gap-2 border-b border-[var(--accent-muted)]">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="var(--accent)">
+            <path d="M6 1L11 4V8L6 11L1 8V4Z"/>
+          </svg>
+          <span className="text-[11px] text-[var(--accent)] flex-1 truncate">{chat.announcement}</span>
+          {chat.announcementAt && (
+            <span className="text-[9px] text-[var(--text-faint)] flex-shrink-0">
+              {new Date(chat.announcementAt).toLocaleDateString("zh-CN")}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-0.5">
         {messages.length === 0 ? (
@@ -109,7 +177,10 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
           </div>
         ) : (
           // UI-04: 按线程聚合显示消息
-          messages.map((msg) => {
+          (searchQuery
+            ? messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+            : messages
+          ).map((msg) => {
             // 查找回复此消息的线程消息
             const threadMessages = messages.filter((m) => m.replyToId === msg.id);
             return (
@@ -131,6 +202,11 @@ export function ChatWindow({ chatId }: { chatId: ChatId }) {
       </div>
 
       <ChatInput chatId={chatId} replyToId={replyingTo} onReplySent={() => setReplyingTo(null)} />
+
+      {/* 群聊详情面板 */}
+      {showGroupDetail && chat.type === "group" && (
+        <GroupDetailPanel chatId={chatId} onClose={() => setShowGroupDetail(false)} />
+      )}
     </div>
   );
 }

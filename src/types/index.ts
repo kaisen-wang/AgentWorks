@@ -224,6 +224,8 @@ export interface Message {
   imageData?: ImageData;
   replyToId?: MessageId;  // 回复的消息 ID（线程）
   mentions?: AgentId[];   // @提及的 Agent
+  revoked?: boolean;      // 消息已撤回
+  readBy?: string[];      // 已读成员 ID 列表
   timestamp: number;
 }
 
@@ -238,6 +240,7 @@ export interface ChatMember {
   name: string;
   avatar: string;
   role: "owner" | "member" | "readonly" | "external"; // 外部协作者
+  joinedAt?: number; // 加入时间
 }
 
 /** 聊天/会话 */
@@ -245,9 +248,17 @@ export interface Chat {
   id: ChatId;
   type: ChatType;
   name: string;            // 群聊名称或单聊对方名称
+  description?: string;    // 群聊描述
+  announcement?: string;   // 群公告（置顶通知）
+  announcementAt?: number; // 群公告发布时间
+  ownerId?: string;        // 群主 ID
+  projectId?: string;      // 关联项目 ID
   members: ChatMember[];
   lastMessage?: string;
   lastMessageTime?: number;
+  unreadCount?: number;    // 未读消息数
+  pinned?: boolean;        // 是否置顶
+  muted?: boolean;         // 是否免打扰
   createdAt: number;
 }
 

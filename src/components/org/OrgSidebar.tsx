@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { IconGroupChat, IconUser, renderAvatarIcon } from "@/components/common/Icons";
-import type { Agent, AgentId } from "@/types";
+import type { Agent, AgentId, ChatMember } from "@/types";
 
 /** 组织架构侧边栏 */
 export function OrgSidebar() {
@@ -11,10 +12,22 @@ export function OrgSidebar() {
   const activeChatId = useAppStore((s: AppState) => s.activeChatId);
   const chats = useAppStore((s: AppState) => s.chats);
   const setActiveChat = useAppStore((s: AppState) => s.setActiveChat);
+  const createChat = useAppStore((s: AppState) => s.createChat);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [chatFilter, setChatFilter] = useState<"all" | "group" | "direct">("all");
 
   const rootAgents = Object.values(agents).filter((a) => a.parentId === null);
   const chatList = Object.values(chats)
-    .sort((a, b) => (b.lastMessageTime || b.createdAt) - (a.lastMessageTime || a.createdAt));
+    .filter((c) => chatFilter === "all" || c.type === chatFilter)
+    .sort((a, b) => {
+      // 置顶优先
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.lastMessageTime || b.createdAt) - (a.lastMessageTime || a.createdAt);
+    });
+
+  const groupCount = Object.values(chats).filter((c) => c.type === "group").length;
+  const directCount = Object.values(chats).filter((c) => c.type === "direct").length;
 
   return (
     <div className="flex flex-col h-full">
@@ -60,11 +73,42 @@ export function OrgSidebar() {
             <h2 className="text-[10px] font-semibold font-heading uppercase tracking-[0.08em] text-[var(--text-muted)]">
               会话
             </h2>
-            {chatList.length > 0 && (
-              <span className="text-[10px] text-[var(--text-faint)] tabular-nums">{chatList.length}</span>
-            )}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowCreateGroup(true)}
+                className="text-[10px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+                title="新建群聊"
+              >
+                <IconGroupChat size={12} />
+              </button>
+              {chatList.length > 0 && (
+                <span className="text-[10px] text-[var(--text-faint)] tabular-nums">{chatList.length}</span>
+              )}
+            </div>
           </div>
         </div>
+        {/* 会话筛选标签 */}
+        {(groupCount > 0 || directCount > 0) && (
+          <div className="px-3 pb-1.5 flex gap-1 flex-shrink-0">
+            {(["all", "group", "direct"] as const).map((filter) => {
+              const labels = { all: "全部", group: "群聊", direct: "单聊" };
+              const counts = { all: groupCount + directCount, group: groupCount, direct: directCount };
+              return (
+                <button
+                  key={filter}
+                  onClick={() => setChatFilter(filter)}
+                  className={`text-[9px] px-1.5 py-0.5 rounded-md transition-all ${
+                    chatFilter === filter
+                      ? "bg-[var(--accent-muted)] text-[var(--accent)] font-medium"
+                      : "text-[var(--text-faint)] hover:text-[var(--text-muted)]"
+                  }`}
+                >
+                  {labels[filter]} {counts[filter]}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="overflow-y-auto flex-1 pb-3 px-1">
           {chatList.length === 0 ? (
             <div className="px-4 py-4 text-center text-[11px] text-[var(--text-muted)]">暂无会话</div>
@@ -90,6 +134,16 @@ export function OrgSidebar() {
                         isActive ? "text-[var(--text-primary)] font-medium" : "text-[var(--text-secondary)]"
                       }`}>
                         {chat.name}
+                        {chat.pinned && (
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="var(--accent)" className="ml-1 inline-block -mt-0.5">
+                            <path d="M4 0L5 3H8L5.5 5L6.5 8L4 6L1.5 8L2.5 5L0 3H3Z"/>
+                          </svg>
+                        )}
+                        {chat.muted && (
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="var(--text-muted)" strokeWidth="1" className="ml-0.5 inline-block -mt-0.5">
+                            <path d="M1 3V5H3L5 7V1L3 3H1Z"/><path d="M6.5 3L7.5 5"/>
+                          </svg>
+                        )}
                       </div>
                       {chat.lastMessage && (
                         <div className="text-[10px] text-[var(--text-muted)] truncate mt-0.5 leading-tight">
@@ -102,6 +156,11 @@ export function OrgSidebar() {
                         {formatRelativeTime(chat.lastMessageTime)}
                       </span>
                     )}
+                    {chat.unreadCount && chat.unreadCount > 0 && (
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--accent)] text-white tabular-nums flex-shrink-0 min-w-[16px] text-center">
+                        {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -109,6 +168,19 @@ export function OrgSidebar() {
           )}
         </div>
       </div>
+
+      {/* Create Group Chat Panel */}
+      {showCreateGroup && (
+        <CreateGroupPanel
+          agents={agents}
+          onCreate={(name, members) => {
+            const chat = createChat("group", name, members);
+            setActiveChat(chat.id);
+            setShowCreateGroup(false);
+          }}
+          onClose={() => setShowCreateGroup(false)}
+        />
+      )}
     </div>
   );
 }
@@ -195,4 +267,96 @@ function formatRelativeTime(ts: number): string {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
   return `${Math.floor(diff / 86400000)}d`;
+}
+
+/** 创建群聊面板 */
+function CreateGroupPanel({
+  agents,
+  onCreate,
+  onClose,
+}: {
+  agents: Record<AgentId, Agent>;
+  onCreate: (name: string, members: ChatMember[]) => void;
+  onClose: () => void;
+}) {
+  const [groupName, setGroupName] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<AgentId>>(new Set());
+
+  const allAgents = Object.values(agents);
+
+  const toggleAgent = (id: AgentId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCreate = () => {
+    if (!groupName.trim() || selectedIds.size === 0) return;
+    const members: ChatMember[] = [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      ...Array.from(selectedIds).map((id) => {
+        const agent = agents[id];
+        return { id: agent.id, name: agent.name, avatar: agent.avatar, role: "member" as const };
+      }),
+    ];
+    onCreate(groupName.trim(), members);
+  };
+
+  return (
+    <div className="absolute inset-0 z-10 glass-strong flex flex-col">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+        <h3 className="text-[11px] font-semibold font-heading text-[var(--text-primary)]">新建群聊</h3>
+        <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-[12px]">
+          ✕
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        <div>
+          <label className="text-[10px] text-[var(--text-muted)] block mb-1">群聊名称</label>
+          <input
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+            placeholder="输入群聊名称"
+            className="w-full px-2.5 py-1.5 text-[12px] glass rounded-lg border border-[var(--border)] focus:border-[var(--accent)] outline-none bg-transparent text-[var(--text-primary)]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-[var(--text-muted)] block mb-1">
+            选择成员 <span className="text-[var(--text-faint)]">({selectedIds.size} 已选)</span>
+          </label>
+          <div className="space-y-1 max-h-[200px] overflow-y-auto">
+            {allAgents.map((agent) => (
+              <button
+                key={agent.id}
+                onClick={() => toggleAgent(agent.id)}
+                className={`w-full px-2.5 py-1.5 text-left flex items-center gap-2 rounded-lg transition-all text-[12px] ${
+                  selectedIds.has(agent.id)
+                    ? "glass-medium border border-[var(--accent)] border-opacity-40"
+                    : "border border-transparent hover:bg-[var(--bg-hover)]"
+                }`}
+              >
+                <div className="w-4 h-4 rounded glass flex items-center justify-center flex-shrink-0">
+                  {renderAvatarIcon(agent.avatar, 8)}
+                </div>
+                <span className="text-[var(--text-secondary)] truncate">{agent.name}</span>
+                <span className="text-[9px] text-[var(--text-faint)] ml-auto">{agent.role}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t border-[var(--border)]">
+        <button
+          onClick={handleCreate}
+          disabled={!groupName.trim() || selectedIds.size === 0}
+          className="w-full py-2 text-[11px] font-medium rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+        >
+          创建群聊
+        </button>
+      </div>
+    </div>
+  );
 }

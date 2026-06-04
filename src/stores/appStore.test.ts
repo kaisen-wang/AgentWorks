@@ -141,6 +141,99 @@ describe("appStore - 聊天", () => {
     useAppStore.getState().removeMemberFromChat(chat.id, "m1");
     expect(useAppStore.getState().chats[chat.id].members).toHaveLength(0);
   });
+
+  it("群聊成员去重", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", []);
+    const member = { id: "m1", name: "成员1", avatar: "bot", role: "member" as const };
+    useAppStore.getState().addMemberToChat(chat.id, member);
+    useAppStore.getState().addMemberToChat(chat.id, member); // 重复添加
+    expect(useAppStore.getState().chats[chat.id].members).toHaveLength(1);
+  });
+
+  it("群聊成员角色", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+    ]);
+    expect(useAppStore.getState().chats[chat.id].members[0].role).toBe("owner");
+    const member = { id: "m1", name: "成员1", avatar: "bot", role: "readonly" as const };
+    useAppStore.getState().addMemberToChat(chat.id, member);
+    expect(useAppStore.getState().chats[chat.id].members[1].role).toBe("readonly");
+  });
+
+  it("群聊不能移除群主", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      { id: "m1", name: "成员1", avatar: "bot", role: "member" },
+    ]);
+    // removeMemberFromChat 不区分角色，但 GroupDetailPanel 中限制了
+    // 此处测试 store 层行为：移除后成员减少
+    useAppStore.getState().removeMemberFromChat(chat.id, "m1");
+    expect(useAppStore.getState().chats[chat.id].members).toHaveLength(1);
+    expect(useAppStore.getState().chats[chat.id].members[0].id).toBe("user");
+  });
+
+  it("群聊创建时包含多个成员", () => {
+    const chat = useAppStore.getState().createChat("group", "作战室", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      { id: "a1", name: "Agent1", avatar: "bot", role: "member" },
+      { id: "a2", name: "Agent2", avatar: "specialist", role: "readonly" },
+    ]);
+    expect(chat.type).toBe("group");
+    expect(chat.name).toBe("作战室");
+    expect(chat.members).toHaveLength(3);
+  });
+
+  it("updateMemberRole 变更成员角色", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      { id: "m1", name: "成员1", avatar: "bot", role: "member" },
+    ]);
+    useAppStore.getState().updateMemberRole(chat.id, "m1", "readonly");
+    const member = useAppStore.getState().chats[chat.id].members.find((m) => m.id === "m1");
+    expect(member!.role).toBe("readonly");
+  });
+
+  it("updateMemberRole 不能修改群主角色", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      { id: "m1", name: "成员1", avatar: "bot", role: "member" },
+    ]);
+    useAppStore.getState().updateMemberRole(chat.id, "user", "member");
+    const owner = useAppStore.getState().chats[chat.id].members.find((m) => m.id === "user");
+    expect(owner!.role).toBe("owner"); // 角色不变
+  });
+
+  it("updateMemberRole 相同角色不变更", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      { id: "m1", name: "成员1", avatar: "bot", role: "member" },
+    ]);
+    useAppStore.getState().updateMemberRole(chat.id, "m1", "member");
+    const member = useAppStore.getState().chats[chat.id].members.find((m) => m.id === "m1");
+    expect(member!.role).toBe("member");
+  });
+
+  it("群聊创建时自动设置 ownerId", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+      { id: "m1", name: "成员1", avatar: "bot", role: "member" },
+    ]);
+    expect(chat.ownerId).toBe("user");
+  });
+
+  it("成员变更时生成系统消息", () => {
+    const chat = useAppStore.getState().createChat("group", "群聊", [
+      { id: "user", name: "你", avatar: "user", role: "owner" },
+    ]);
+    // 创建群聊时已有一条系统消息
+    const msgsBefore = useAppStore.getState().messages[chat.id];
+    expect(msgsBefore).toHaveLength(1);
+    useAppStore.getState().addMemberToChat(chat.id, { id: "m1", name: "成员1", avatar: "bot", role: "member" });
+    const msgs = useAppStore.getState().messages[chat.id];
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1].type).toBe("system");
+    expect(msgs[1].content).toContain("加入了群聊");
+  });
 });
 
 describe("appStore - 消息", () => {

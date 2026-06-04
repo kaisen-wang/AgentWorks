@@ -151,6 +151,9 @@ function initializeSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS conversations (
       conversation_id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      owner_id TEXT,
       project_id TEXT,
       members TEXT NOT NULL,
       created_at INTEGER NOT NULL
@@ -314,4 +317,28 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_install_logs_status ON installation_logs(status) WHERE status = 'in_progress';
   `);
 
+  // 迁移：为已有数据库添加新列
+  migrateSchema(db);
+}
+
+/** 数据库迁移：确保已有数据库包含新列 */
+function migrateSchema(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has("name")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN name TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columnNames.has("description")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columnNames.has("owner_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN owner_id TEXT");
+  }
+  if (!columnNames.has("announcement")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN announcement TEXT NOT NULL DEFAULT ''");
+  }
+  if (!columnNames.has("announcement_at")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN announcement_at INTEGER");
+  }
 }

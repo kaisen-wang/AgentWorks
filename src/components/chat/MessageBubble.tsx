@@ -11,6 +11,7 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
   const isSystem = message.senderId === "system";
   const resolveReportCard = useAppStore((s) => s.resolveReportCard);
   const resolveBudgetAlert = useAppStore((s) => s.resolveBudgetAlert);
+  const revokeMessage = useAppStore((s) => s.revokeMessage);
   const agents = useAppStore((s) => s.agents);
   const senderName = isUser ? "你" : isSystem ? "系统" : agents[message.senderId]?.name || "未知";
 
@@ -35,6 +36,10 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
           isUser ? "glass-medium border border-[var(--cta)] border-opacity-20" : "card-glow"
         }`}>
           <div className="px-3.5 py-2.5">
+            {message.revoked ? (
+              <span className="text-[12px] text-[var(--text-muted)] italic">此消息已撤回</span>
+            ) : (
+              <>
             {message.type === "text" && <MarkdownRenderer content={message.content} className="text-[13px] text-[var(--text-primary)]" />}
             {message.type === "task_card" && message.taskCard && <TaskCardView card={message.taskCard} />}
             {message.type === "report_card" && message.reportCard && <ReportCardView card={message.reportCard} chatId={message.chatId} messageId={message.id} onResolve={resolveReportCard} />}
@@ -43,10 +48,12 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
             {message.type === "progress" && message.progressData && <ProgressView data={message.progressData} />}
             {message.type === "file" && message.fileData && <FileView data={message.fileData} />}
             {message.type === "image" && message.imageData && <ImageView data={message.imageData} />}
+              </>
+            )}
           </div>
         </div>
         {/* UI-04: 回复按钮 */}
-        {onReply && !isSystem && (
+        {onReply && !isSystem && !message.revoked && (
           <button
             onClick={() => onReply(message.id)}
             className="text-[9px] text-[var(--text-faint)] hover:text-[var(--text-muted)] transition-colors opacity-0 group-hover/msg:opacity-100 px-0.5"
@@ -54,8 +61,67 @@ export function MessageBubble({ message, onReply }: { message: Message; onReply?
             回复
           </button>
         )}
+        {/* 撤回按钮：仅 2 分钟内且为用户自己发送的消息 */}
+        {isUser && !message.revoked && Date.now() - message.timestamp < 2 * 60 * 1000 && (
+          <button
+            onClick={() => revokeMessage(message.chatId, message.id)}
+            className="text-[9px] text-[var(--text-faint)] hover:text-[var(--error)] transition-colors opacity-0 group-hover/msg:opacity-100 px-0.5"
+          >
+            撤回
+          </button>
+        )}
+        {/* 转发按钮 */}
+        {!isSystem && !message.revoked && (
+          <ForwardButton message={message} />
+        )}
+        {/* 已读回执 */}
+        {isUser && message.readBy && message.readBy.length > 0 && (
+          <span className="text-[9px] text-[var(--text-faint)] px-0.5">
+            {message.readBy.filter((id) => id !== "user").length > 0
+              ? `已读 ${message.readBy.filter((id) => id !== "user").length}`
+              : "已发送"}
+          </span>
+        )}
       </div>
     </div>
+  );
+}
+
+/** 转发按钮组件 */
+function ForwardButton({ message }: { message: Message }) {
+  const [showTargets, setShowTargets] = useState(false);
+  const chats = useAppStore((s) => s.chats);
+  const sendMessage = useAppStore((s) => s.sendMessage);
+  const otherChats = Object.values(chats).filter((c) => c.id !== message.chatId);
+
+  if (otherChats.length === 0) return null;
+
+  return (
+    <span className="relative">
+      <button
+        onClick={() => setShowTargets(!showTargets)}
+        className="text-[9px] text-[var(--text-faint)] hover:text-[var(--text-muted)] transition-colors opacity-0 group-hover/msg:opacity-100 px-0.5"
+      >
+        转发
+      </button>
+      {showTargets && (
+        <div className="absolute bottom-full right-0 mb-1 w-40 glass-heavy rounded-lg p-1.5 shadow-lg z-20 animate-slide-up">
+          <div className="text-[9px] text-[var(--text-muted)] px-1.5 py-1">转发到...</div>
+          {otherChats.slice(0, 8).map((c) => (
+            <button
+              key={c.id}
+              onClick={() => {
+                sendMessage(c.id, "text", "user", `[转发] ${message.content.slice(0, 200)}`);
+                setShowTargets(false);
+              }}
+              className="w-full text-left px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[11px] text-[var(--text-primary)] truncate transition-colors"
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -224,19 +290,28 @@ function FileView({ data }: { data: FileData }) {
   const sizeStr = data.size < 1024 ? `${data.size} B`
     : data.size < 1024 * 1024 ? `${(data.size / 1024).toFixed(1)} KB`
     : `${(data.size / (1024 * 1024)).toFixed(1)} MB`;
+
+  // 根据文件类型选择图标
+  const isPdf = data.mimeType === "application/pdf";
+  const isDoc = data.mimeType.includes("word") || data.mimeType.includes("document");
+  const isXls = data.mimeType.includes("excel") || data.mimeType.includes("spreadsheet");
+  const isPpt = data.mimeType.includes("presentation");
+  const isZip = data.mimeType.includes("zip") || data.mimeType.includes("rar");
+  const iconColor = isPdf ? "var(--error)" : isDoc ? "var(--accent)" : isXls ? "var(--success)" : isPpt ? "var(--warning)" : isZip ? "var(--text-muted)" : "var(--accent)";
+
   return (
     <div className="flex items-center gap-2.5 glass rounded-xl p-2.5 min-w-[200px]">
       <div className="w-8 h-8 rounded-lg bg-[var(--accent-muted)] flex items-center justify-center flex-shrink-0">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--accent)" strokeWidth="1.2">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={iconColor} strokeWidth="1.2">
           <path d="M3 1H9L12 4V13H3V1Z"/><path d="M9 1V4H12"/>
         </svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">{data.name}</p>
-        <p className="text-[10px] text-[var(--text-muted)]">{sizeStr} · {data.mimeType}</p>
+        <p className="text-[10px] text-[var(--text-muted)]">{sizeStr} · {data.mimeType.split("/").pop()}</p>
       </div>
       {data.url && (
-        <a href={data.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors flex-shrink-0">
+        <a href={data.url} download={data.name} className="text-[10px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors flex-shrink-0 px-2 py-1 rounded-md hover:bg-[var(--accent-muted)]">
           下载
         </a>
       )}

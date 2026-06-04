@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { parseNaturalLanguage } from "@/lib/nlu";
-import { IconBot, IconTask, IconChart, IconArchive, IconCollaborator, IconMoon, IconHelp, IconUser, IconFolder, IconShield, IconAlert, renderAvatarIcon } from "@/components/common/Icons";
+import { IconBot, IconTask, IconChart, IconArchive, IconCollaborator, IconMoon, IconHelp, IconUser, IconFolder, IconShield, IconAlert, IconGroupChat, renderAvatarIcon } from "@/components/common/Icons";
 import { parseSlashCommand, executeCommand } from "@/lib/commands/SlashCommandRouter";
 import type { AgentId, ChatId, AgentRole, AgentCapability, MessageId } from "@/types";
 
@@ -41,6 +41,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   const [mentionFilter, setMentionFilter] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -63,6 +64,10 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   const slashCommands = [
     { cmd: "/new_agent", desc: "创建新 Agent", icon: <IconBot size={13} /> },
     { cmd: "/new_task", desc: "下达任务 (@Agent名 描述)", icon: <IconTask size={13} /> },
+    { cmd: "/create_group", desc: "创建群聊 (群名 @Agent1 @Agent2)", icon: <IconGroupChat size={13} /> },
+    { cmd: "/add_member", desc: "添加成员到群聊 (@Agent名)", icon: <IconGroupChat size={13} /> },
+    { cmd: "/remove_member", desc: "从群聊移除成员 (@Agent名)", icon: <IconGroupChat size={13} /> },
+    { cmd: "/members", desc: "查看群聊成员列表", icon: <IconGroupChat size={13} /> },
     { cmd: "/summary", desc: "汇总当前任务", icon: <IconChart size={13} /> },
     { cmd: "/archive", desc: "查询归档 (关键词)", icon: <IconArchive size={13} /> },
     { cmd: "/queue", desc: "查看Agent任务队列", icon: <IconChart size={13} /> },
@@ -75,6 +80,44 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   ];
 
   const noAgents = agentList.length === 0;
+
+  /** 文件选择处理 - 上传到服务器本地存储 */
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // 上传文件到服务器
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/chat/upload", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!data.success || !data.file) {
+        console.error("文件上传失败:", data.error);
+        return;
+      }
+
+      const { id, filename, mimeType, size, url } = data.file;
+      const isImage = mimeType.startsWith("image/");
+
+      if (isImage) {
+        sendMessage(chatId, "image", "user", `📷 ${filename}`, {
+          imageData: { url, alt: filename },
+        });
+      } else {
+        sendMessage(chatId, "file", "user", `📎 ${filename}`, {
+          fileData: { name: filename, size, mimeType, url },
+        });
+      }
+    } catch (err) {
+      console.error("文件上传异常:", err);
+    }
+
+    // 重置 input 以允许重复选择同一文件
+    e.target.value = "";
+  };
 
   const handleSubmit = () => {
     console.log('handleSubmit.input', input);
@@ -140,7 +183,10 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
       });
       
       if (chat) {
-        const agentMembers = chat.members.filter(m => m.id !== "user" && m.id !== "system");
+        // 群聊中：仅触发 member 角色的 Agent，readonly/external 不自动触发
+        const agentMembers = chat.members.filter(m =>
+          m.id !== "user" && m.id !== "system" && m.role !== "readonly" && m.role !== "external"
+        );
         
         console.log('🔍 [调试] Agent成员', {
           Agent成员数: agentMembers.length,
@@ -417,6 +463,15 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
       {showMentionMenu && filteredAgents.length > 0 && (
         <div className="absolute bottom-full left-4 right-4 mb-2 glass-heavy rounded-xl p-1.5 max-h-52 overflow-y-auto shadow-lg animate-slide-up glass-reflect z-10">
           <div className="text-[9px] font-semibold font-heading uppercase tracking-[0.08em] text-[var(--text-muted)] px-2 py-1.5">提及 Agent</div>
+          {/* @all 全员提及（仅群聊） */}
+          {chats[chatId]?.type === "group" && (
+            <button onClick={() => { const lastAt = input.lastIndexOf("@"); handleInputChange(input.slice(0, lastAt) + "@all ", true); setShowMentionMenu(false); inputRef.current?.focus(); }}
+              className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-[100ms] flex items-center gap-2.5 group">
+              <div className="w-5 h-5 rounded-md glass flex items-center justify-center glass-reflect flex-shrink-0 text-[10px] text-[var(--accent)] font-bold">A</div>
+              <span className="text-[12px] text-[var(--accent)] truncate">所有人</span>
+              <span className="text-[9px] text-[var(--text-muted)] glass px-1.5 py-[1px] rounded flex-shrink-0">@all</span>
+            </button>
+          )}
           {filteredAgents.map((a) => (
             <button key={a.id} onClick={() => { const lastAt = input.lastIndexOf("@"); handleInputChange(input.slice(0, lastAt) + `@${a.name} `, true); setShowMentionMenu(false); inputRef.current?.focus(); }}
               className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-[100ms] flex items-center gap-2.5 group">
@@ -430,6 +485,27 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
       )}
 
       {/* Input bar — enterprise chat style */}
+      {(() => {
+        const currentChat = chats[chatId];
+        const userMember = currentChat?.members.find((m) => m.id === "user");
+        const isReadOnly = userMember?.role === "readonly" || userMember?.role === "external";
+        if (isReadOnly) {
+          return (
+            <div className="px-4 py-3 glass-surface glass-reflect">
+              <div className="text-[11px] text-[var(--text-muted)] text-center">
+                {userMember?.role === "readonly" ? "当前为只读成员，无法发送消息" : "外部协作者仅可查看，无法发送消息"}
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+      {(() => {
+        const currentChat = chats[chatId];
+        const userMember = currentChat?.members.find((m) => m.id === "user");
+        const isReadOnly = userMember?.role === "readonly" || userMember?.role === "external";
+        if (isReadOnly) return null;
+        return (
       <div className="px-4 py-3 glass-surface glass-reflect">
         {/* Reply indicator */}
         {replyToId && (
@@ -457,6 +533,23 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
         </div>
         {/* Textarea + Send */}
         <div className="flex items-end gap-2">
+          {/* 附件按钮 */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+            title="发送文件/图片"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <path d="M4 10.5V4.5C4 3.12 5.12 2 6.5 2C7.88 2 9 3.12 9 4.5V10.5C9 11.33 8.33 12 7.5 12C6.67 12 6 11.33 6 10.5V5"/>
+            </svg>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar"
+            onChange={handleFileSelect}
+          />
           <textarea
             ref={inputRef}
             value={input}
@@ -476,6 +569,8 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
           </button>
         </div>
       </div>
+        );
+      })()}
     </div>
   );
 }
