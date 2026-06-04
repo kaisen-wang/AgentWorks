@@ -40,6 +40,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -81,48 +82,74 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
 
   const noAgents = agentList.length === 0;
 
-  /** 文件选择处理 - 上传到服务器本地存储 */
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  /** 文件选择处理 - 暂存到待上传列表，点击发送后才上传 */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    try {
-      // 上传文件到服务器
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/chat/upload", { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (!data.success || !data.file) {
-        console.error("文件上传失败:", data.error);
-        return;
-      }
-
-      const { id, filename, mimeType, size, url } = data.file;
-      const isImage = mimeType.startsWith("image/");
-
-      if (isImage) {
-        sendMessage(chatId, "image", "user", `📷 ${filename}`, {
-          imageData: { url, alt: filename },
-        });
-      } else {
-        sendMessage(chatId, "file", "user", `📎 ${filename}`, {
-          fileData: { name: filename, size, mimeType, url },
-        });
-      }
-    } catch (err) {
-      console.error("文件上传异常:", err);
-    }
+    setPendingFiles((prev) => [...prev, file]);
 
     // 重置 input 以允许重复选择同一文件
     e.target.value = "";
   };
 
-  const handleSubmit = () => {
+  /** 移除待上传文件 */
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  /** 上传单个文件到服务器，返回上传结果 */
+  const uploadFile = async (file: File): Promise<{ id: string; filename: string; mimeType: string; size: number; url: string } | null> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/chat/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!data.success || !data.file) {
+        console.error("文件上传失败:", data.error);
+        return null;
+      }
+      return data.file;
+    } catch (err) {
+      console.error("文件上传异常:", err);
+      return null;
+    }
+  };
+
+  const handleSubmit = async () => {
     console.log('handleSubmit.input', input);
     const text = input.trim();
-    if (!text) return;
+    const hasFiles = pendingFiles.length > 0;
+
+    // 无文本且无附件时，不发送
+    if (!text && !hasFiles) return;
+
+    // 先上传所有待上传附件，发送为文件/图片消息
+    if (hasFiles) {
+      const filesToUpload = [...pendingFiles];
+      setPendingFiles([]);
+
+      for (const file of filesToUpload) {
+        const result = await uploadFile(file);
+        if (result) {
+          const { filename, mimeType, size, url } = result;
+          const isImage = mimeType.startsWith("image/");
+          if (isImage) {
+            sendMessage(chatId, "image", "user", `📷 ${filename}`, {
+              imageData: { url, alt: filename },
+            });
+          } else {
+            sendMessage(chatId, "file", "user", `📎 ${filename}`, {
+              fileData: { name: filename, size, mimeType, url },
+            });
+          }
+        }
+      }
+    }
+
+    // 无文本时仅发送附件
+    if (!text) { setInput(""); onReplySent?.(); return; }
+
     if (text.startsWith("/")) { handleSlashCommand(text); setInput(""); return; }
 
     // NLU 自然语言解析（ORG-01, SOLO-02, KNL-02）
@@ -514,6 +541,31 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
             回复中
           </div>
         )}
+        {/* Pending files preview */}
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {pendingFiles.map((file, index) => {
+              const isImage = file.type.startsWith("image/");
+              const objectUrl = isImage ? URL.createObjectURL(file) : null;
+              return (
+                <div key={`${file.name}-${index}`} className="relative group flex items-center gap-1.5 bg-[var(--glass-light)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-[11px] text-[var(--text-secondary)] max-w-[180px]">
+                  {isImage && objectUrl ? (
+                    <img src={objectUrl} alt={file.name} className="w-6 h-6 rounded object-cover flex-shrink-0" onLoad={() => URL.revokeObjectURL(objectUrl)} />
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" className="flex-shrink-0"><path d="M3 7V3.5C3 2.1 4.1 1 5.5 1S8 2.1 8 3.5V8C8 8.8 7.3 9.5 6.5 9.5S5 8.8 5 8V3.5C5 3 5.3 2.5 5.5 2.5S6 3 6 3.5V8"/></svg>
+                  )}
+                  <span className="truncate">{file.name}</span>
+                  <button
+                    onClick={() => removePendingFile(index)}
+                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--text-muted)] text-white flex items-center justify-center text-[9px] leading-none opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* Toolbar row */}
         <div className="flex items-center gap-1 mb-2">
           <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="斜杠命令" onClick={() => { setInput("/"); setShowSlashMenu(true); inputRef.current?.focus(); }}>
@@ -522,7 +574,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
           <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="@ 提及" onClick={() => { setInput(prev => prev + "@"); setMentionFilter(""); setShowMentionMenu(true); inputRef.current?.focus(); }}>
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="7.5" cy="7.5" r="5.5"/><path d="M7.5 2V3M7.5 12V13M2 7.5H3M12 7.5H13"/></svg>
           </button>
-          <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="附件">
+          <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="附件" onClick={() => fileInputRef.current?.click()}>
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M4 8V4.5C4 2.5 5.5 1 7.5 1S11 2.5 11 4.5V9C11 10.1 10.1 11 9 11S7 10.1 7 9V4.5C7 3.7 7.7 3 8.5 3S10 3.7 10 4.5V9"/></svg>
           </button>
           <button className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" title="表情">
@@ -533,16 +585,6 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
         </div>
         {/* Textarea + Send */}
         <div className="flex items-end gap-2">
-          {/* 附件按钮 */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-            title="发送文件/图片"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <path d="M4 10.5V4.5C4 3.12 5.12 2 6.5 2C7.88 2 9 3.12 9 4.5V10.5C9 11.33 8.33 12 7.5 12C6.67 12 6 11.33 6 10.5V5"/>
-            </svg>
-          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -562,7 +604,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
           />
           <button
             onClick={handleSubmit}
-            disabled={!input.trim()}
+            disabled={!input.trim() && pendingFiles.length === 0}
             className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--cta)] text-white hover:bg-[var(--cta-hover)] hover:shadow-[0_0_16px_var(--cta-glow)] active:scale-95"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8L13 3L8 13L7 8.5L3 8Z" fill="currentColor"/></svg>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { renderAvatarIcon } from "@/components/common/Icons";
@@ -355,8 +355,10 @@ export function GroupDetailPanel({ chatId, onClose }: { chatId: ChatId; onClose:
 
 /** 群聊内任务列表 */
 function GroupTaskList({ chatId }: { chatId: ChatId }) {
-  const tasks = useAppStore((s: AppState) =>
-    Object.values(s.tasks).filter((t) => t.chatId === chatId)
+  const allTasks = useAppStore((s: AppState) => s.tasks);
+  const tasks = useMemo(
+    () => Object.values(allTasks).filter((t) => t.chatId === chatId),
+    [allTasks, chatId]
   );
 
   if (tasks.length === 0) return null;
