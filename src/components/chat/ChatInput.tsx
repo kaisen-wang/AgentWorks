@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import { parseNaturalLanguage } from "@/lib/nlu";
+import type { NLUParseResult } from "@/lib/nlu/CommandParser";
 import { IconBot, IconTask, IconChart, IconArchive, IconCollaborator, IconMoon, IconHelp, IconUser, IconFolder, IconShield, IconAlert, IconGroupChat, renderAvatarIcon } from "@/components/common/Icons";
 import { parseSlashCommand, executeCommand } from "@/lib/commands/SlashCommandRouter";
 import type { AgentId, ChatId, AgentRole, AgentCapability, MessageId } from "@/types";
@@ -147,13 +148,30 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
       }
     }
 
-    // 无文本时仅发送附件
-    if (!text) { setInput(""); onReplySent?.(); return; }
+    // 无文本时仅发送附件，但仍触发 Agent 回复
+    if (!text) {
+      setInput("");
+      // 触发 Agent 回复，让 Agent 能看到上传的文件
+      const chat = chats[chatId];
+      if (chat && !noAgents) {
+        const agentMembers = chat.members.filter(m =>
+          m.id !== "user" && m.id !== "system" && m.role !== "readonly" && m.role !== "external"
+        );
+        for (const member of agentMembers) {
+          const agent = agents[member.id];
+          if (agent) {
+            callWorkflow("executeAgent", { agentId: agent.id, message: "[用户发送了附件]", chatId });
+          }
+        }
+      }
+      onReplySent?.();
+      return;
+    }
 
     if (text.startsWith("/")) { handleSlashCommand(text); setInput(""); return; }
 
     // NLU 自然语言解析（ORG-01, SOLO-02, KNL-02）
-    const nluResult = parseNaturalLanguage(text);
+    const nluResult = await parseNaturalLanguage(text);
     if (nluResult.confidence >= 0.7 && nluResult.intent !== "unknown") {
       // create_agent 意图正常处理
       if (nluResult.intent === "create_agent") {
@@ -244,7 +262,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
   };
 
   /** 处理 NLU 解析出的意图 */
-  const handleNLUIntent = (result: ReturnType<typeof parseNaturalLanguage>) => {
+  const handleNLUIntent = async (result: NLUParseResult) => {
     const { intent, params } = result;
     const store = useAppStore.getState();
 
@@ -390,10 +408,20 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
           for (const capName of capabilityNames) {
             const existing = newCapabilities.find((c) => c.name === capName);
             if (!existing) {
-              // 从预置标签库查找完整定义，否则创建简单标签
-              const { PRESET_CAPABILITIES } = require("@/lib/capability/CapabilityMatcher");
-              const preset = PRESET_CAPABILITIES.find((c: AgentCapability) => c.name === capName);
-              newCapabilities.push(preset || { name: capName, description: capName });
+              // 从 skills API 查找完整定义，否则创建简单标签
+              try {
+                const res = await fetch("/api/skills");
+                const data = await res.json();
+                const skill = data.success && Array.isArray(data.skills)
+                  ? data.skills.find((s: any) => s.name === capName)
+                  : null;
+                newCapabilities.push(skill
+                  ? { name: skill.name, description: skill.description || skill.name, tools: skill.tags || [] }
+                  : { name: capName, description: capName }
+                );
+              } catch {
+                newCapabilities.push({ name: capName, description: capName });
+              }
             }
           }
           store.updateAgent(agent.id, { capabilities: newCapabilities });
@@ -589,7 +617,7 @@ export function ChatInput({ chatId, replyToId, onReplySent }: { chatId: ChatId; 
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.md,.zip,.rar"
             onChange={handleFileSelect}
           />
           <textarea

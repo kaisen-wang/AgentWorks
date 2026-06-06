@@ -6,9 +6,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdtemp, rm, cp, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import type {
   AgentId,
   ResourceScope,
@@ -174,10 +175,23 @@ export class SkillInstaller {
       }
       this.completeStep(depStep);
 
-      // 步骤 5: 注册
+      // 步骤 5: 持久化 skill 文件到 data/skills 目录
+      const skillDirName = skillDefinition.meta.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const skillsBaseDir = join(process.cwd(), 'data', 'skills');
+      const skillPersistDir = join(skillsBaseDir, skillDirName);
+
+      // 确保 data/skills 目录存在
+      if (!existsSync(skillsBaseDir)) {
+        await mkdir(skillsBaseDir, { recursive: true });
+      }
+
+      // 将临时目录中的 skill 文件复制到持久化目录
+      await cp(downloadResult.packagePath!, skillPersistDir, { recursive: true });
+
+      // 步骤 6: 注册
       const registerStep = this.addStep(context, 'register');
       try {
-        await this.skillRegistry.register(skillDefinition, scope, agentId);
+        await this.skillRegistry.register(skillDefinition, scope, agentId, skillPersistDir);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('already') || msg.includes('duplicate')) {

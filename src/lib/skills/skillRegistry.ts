@@ -51,7 +51,8 @@ export class SkillRegistry implements ISkillRegistry {
   async register(
     definition: SkillDefinition,
     scope: ResourceScope,
-    agentId?: AgentId
+    agentId?: AgentId,
+    skillPath?: string
   ): Promise<void> {
     // 验证定义
     this.validateDefinition(definition);
@@ -67,7 +68,7 @@ export class SkillRegistry implements ISkillRegistry {
     }
 
     // 转换为数据库记录
-    const record = this.definitionToRecord(definition, scope, agentId);
+    const record = this.definitionToRecord(definition, scope, agentId, skillPath);
 
     // 注册到资源池
     if (scope === 'global') {
@@ -254,7 +255,8 @@ export class SkillRegistry implements ISkillRegistry {
   private definitionToRecord(
     definition: SkillDefinition,
     scope: ResourceScope,
-    agentId?: AgentId
+    agentId?: AgentId,
+    skillPath?: string
   ): any {
     return {
       id: definition.meta.id,
@@ -272,6 +274,7 @@ export class SkillRegistry implements ISkillRegistry {
       config: definition.config ? JSON.stringify(definition.config) : null,
       executorType: 'function',
       executorData: definition.executor.toString(),
+      path: skillPath || null,
       status: 'active',
       healthStatus: JSON.stringify({ healthy: true, status: 'ok', lastCheck: Date.now() }),
       createdAt: Date.now(),

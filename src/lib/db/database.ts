@@ -189,6 +189,7 @@ function initializeSchema(db: Database.Database): void {
       config TEXT,
       executor_type TEXT NOT NULL,
       executor_data TEXT,
+      path TEXT,
       status TEXT NOT NULL,
       health_status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -341,4 +342,5 @@ function migrateSchema(db: Database.Database): void {
   if (!columnNames.has("announcement_at")) {
     db.exec("ALTER TABLE conversations ADD COLUMN announcement_at INTEGER");
   }
+
 }

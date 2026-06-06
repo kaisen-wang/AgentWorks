@@ -17,17 +17,20 @@ import type { AgentMessage } from "@/lib/agent-loop/types";
 export class SpecialistAgent extends BaseAgent {
   readonly capabilities: AgentCapability[];
   readonly tools: string[];
+  readonly skillIds: string[];
 
   constructor(
     id: AgentId,
     name: string,
     config: AgentConfig,
     capabilities: AgentCapability[] = [],
-    tools: string[] = []
+    tools: string[] = [],
+    skillIds: string[] = []
   ) {
     super(id, name, config);
     this.capabilities = capabilities;
     this.tools = tools;
+    this.skillIds = skillIds;
   }
 
   /**
@@ -53,7 +56,37 @@ export class SpecialistAgent extends BaseAgent {
           ? `你的能力标签: ${this.capabilities.map(c => `${c.name}(${c.description})`).join(", ")}`
           : "你是一个通用专员";
 
-        const systemPrompt = `你是 ${this.name}，一个专员 Agent。${capabilityDesc}
+        // 查询 agent 绑定的 skills 信息
+        let skillsDesc = '';
+        try {
+          const { getDb } = await import('@/lib/db/database');
+          const { SkillRepo } = await import('@/lib/db/skillRepo');
+          const db = getDb();
+          const skillRepo = new SkillRepo(db);
+
+          // 获取 agent 可访问的 skills（全局 + 私有）
+          const allSkills = skillRepo.findAll();
+          const accessibleSkills = allSkills.filter(s =>
+            s.status === 'active' && (
+              s.scope === 'global' ||
+              (s.scope === 'private' && s.ownerId === this.id)
+            )
+          );
+
+          if (accessibleSkills.length > 0) {
+            const skillList = accessibleSkills
+              .map(s => {
+                const pathInfo = s.path ? ` | 路径: ${s.path}` : '';
+                return `- ${s.name}${pathInfo}: ${s.description || '无描述'}`;
+              })
+              .join('\n');
+            skillsDesc = `\n\n## 已安装的 Skills\n${skillList}`;
+          }
+        } catch (err) {
+          console.warn('[SpecialistAgent] 查询 skills 信息失败:', err);
+        }
+
+        const systemPrompt = `你是 ${this.name}，一个专员 Agent。${capabilityDesc}${skillsDesc}
 
 当用户要求创建文件、编写代码等任务时，请使用提供的工具来完成实际操作。
 不要只是在对话中输出代码，而是调用工具来创建实际的文件。

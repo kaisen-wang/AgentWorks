@@ -7,11 +7,10 @@
  * 支持从 /new_agent 斜杠命令或空状态页面触发。
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import type { AgentRole, AgentCapability } from "@/types";
-import { PRESET_CAPABILITIES } from "@/lib/capability/CapabilityMatcher";
 
 interface CreateAgentPanelProps {
   onClose: () => void;
@@ -45,6 +44,24 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
   const [selectedCapabilities, setSelectedCapabilities] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
 
+  // 动态加载能力标签：从 skills 表
+  const [availableCapabilities, setAvailableCapabilities] = useState<AgentCapability[]>([]);
+  useEffect(() => {
+    fetch("/api/skills")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.skills)) {
+          const skillCaps: AgentCapability[] = data.skills.map((s: any) => ({
+            name: s.name,
+            description: s.description || `Skill: ${s.name}`,
+            tools: s.tags || [],
+          }));
+          setAvailableCapabilities(skillCaps);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const agentList = Object.values(agents);
   const supervisors = agentList.filter((a) => a.role === "supervisor");
 
@@ -65,8 +82,8 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
     }
 
     const capabilities: AgentCapability[] = Array.from(selectedCapabilities).map((capName) => {
-      const preset = PRESET_CAPABILITIES.find((c) => c.name === capName);
-      return preset || { name: capName, description: capName };
+      const available = availableCapabilities.find((c) => c.name === capName);
+      return available || { name: capName, description: capName };
     });
 
     const config: Record<string, unknown> = { model };
@@ -216,18 +233,9 @@ export function CreateAgentPanel({ onClose, initialName = "" }: CreateAgentPanel
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-[12px] font-medium text-[var(--text-secondary)]">能力标签</label>
-            <a
-              href="https://skillhub.cn/install/skillhub.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] text-[var(--accent)] hover:underline flex items-center gap-1"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M5 1V9M1 5H9"/></svg>
-              SkillHub 商店
-            </a>
           </div>
           <div className="flex flex-wrap gap-2">
-            {PRESET_CAPABILITIES.map((cap) => (
+            {availableCapabilities.map((cap) => (
               <button
                 key={cap.name}
                 onClick={() => toggleCapability(cap.name)}

@@ -65,7 +65,10 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/skills - 列出可访问的 Skills
+ * GET /api/skills - 列出 Skills
+ * - 无参数：返回所有 active skills（用于 UI 能力标签选择）
+ * - agentId：返回该 agent 可访问的 skills（全局 + 私有）
+ * - agentId + skillId：查找特定 skill
  */
 export async function GET(request: NextRequest) {
   try {
@@ -73,17 +76,29 @@ export async function GET(request: NextRequest) {
     const agentId = searchParams.get('agentId');
     const skillId = searchParams.get('skillId');
 
-    if (!agentId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'agentId is required',
-        },
-        { status: 400 }
-      );
-    }
-
     const manager = await createSkillsToolsManager();
+
+    // 无 agentId：返回所有 active skills（供 UI 能力标签选择）
+    if (!agentId) {
+      const { getDb } = await import('@/lib/db/database');
+      const { SkillRepo } = await import('@/lib/db/skillRepo');
+      const db = getDb();
+      const skillRepo = new SkillRepo(db);
+      const allSkills = skillRepo.findAll().filter(s => s.status === 'active');
+
+      return NextResponse.json({
+        success: true,
+        skills: allSkills.map(s => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          path: s.path,
+          scope: s.scope,
+          category: s.category,
+          tags: s.tags ? JSON.parse(s.tags) : [],
+        })),
+      });
+    }
 
     // 查找特定 Skill
     if (skillId) {

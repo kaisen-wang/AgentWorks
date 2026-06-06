@@ -17,12 +17,12 @@ export class SkillRepo implements ISkillRepo {
       INSERT INTO skills (
         id, name, description, version, author, tags, category,
         input_schema, output_schema, dependencies, scope, owner_id,
-        config, executor_type, executor_data, status, health_status,
+        config, executor_type, executor_data, path, status, health_status,
         created_at, updated_at
       ) VALUES (
         @id, @name, @description, @version, @author, @tags, @category,
         @inputSchema, @outputSchema, @dependencies, @scope, @ownerId,
-        @config, @executorType, @executorData, @status, @healthStatus,
+        @config, @executorType, @executorData, @path, @status, @healthStatus,
         @createdAt, @updatedAt
       )
     `);
@@ -49,6 +49,7 @@ export class SkillRepo implements ISkillRepo {
         config = @config,
         executor_type = @executorType,
         executor_data = @executorData,
+        path = @path,
         status = @status,
         health_status = @healthStatus,
         updated_at = @updatedAt
@@ -121,6 +122,7 @@ export class SkillRepo implements ISkillRepo {
       config: row.config,
       executorType: row.executor_type,
       executorData: row.executor_data,
+      path: row.path,
       status: row.status,
       healthStatus: row.health_status,
       createdAt: row.created_at,

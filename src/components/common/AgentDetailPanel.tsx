@@ -6,11 +6,10 @@
  * 展示 Agent 信息，支持编辑描述、动态增删能力标签。
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
 import type { AppState } from "@/stores/appStore";
 import type { AgentId, AgentCapability } from "@/types";
-import { PRESET_CAPABILITIES } from "@/lib/capability/CapabilityMatcher";
 import { renderAvatarIcon } from "@/components/common/Icons";
 
 interface AgentDetailPanelProps {
@@ -27,16 +26,34 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
   const [descDraft, setDescDraft] = useState(agent?.description || "");
   const [customCapInput, setCustomCapInput] = useState("");
 
+  // 动态加载能力标签：从 skills 表
+  const [availableCapabilities, setAvailableCapabilities] = useState<AgentCapability[]>([]);
+  useEffect(() => {
+    fetch("/api/skills")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.skills)) {
+          const skillCaps: AgentCapability[] = data.skills.map((s: any) => ({
+            name: s.name,
+            description: s.description || `Skill: ${s.name}`,
+            tools: s.tags || [],
+          }));
+          setAvailableCapabilities(skillCaps);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   if (!agent) return null;
 
   const currentCapNames = new Set(agent.capabilities.map((c) => c.name));
 
   const toggleCapability = (capName: string) => {
-    const preset = PRESET_CAPABILITIES.find((c) => c.name === capName);
+    const available = availableCapabilities.find((c) => c.name === capName);
     if (currentCapNames.has(capName)) {
       updateAgent(agentId, { capabilities: agent.capabilities.filter((c) => c.name !== capName) });
     } else {
-      const newCap: AgentCapability = preset || { name: capName, description: capName };
+      const newCap: AgentCapability = available || { name: capName, description: capName };
       updateAgent(agentId, { capabilities: [...agent.capabilities, newCap] });
     }
   };
@@ -141,15 +158,6 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-[12px] font-medium text-[var(--text-secondary)]">能力标签</label>
-            <a
-              href="https://skillhub.cn/install/skillhub.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] text-[var(--accent)] hover:underline flex items-center gap-1"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M5 1V9M1 5H9"/></svg>
-              SkillHub 商店
-            </a>
           </div>
 
           {/* Current capabilities */}
@@ -174,9 +182,9 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
             </div>
           )}
 
-          {/* Add from preset */}
+          {/* Add from available (preset + skills) */}
           <div className="flex flex-wrap gap-1.5">
-            {PRESET_CAPABILITIES.filter((c) => !currentCapNames.has(c.name)).map((cap) => (
+            {availableCapabilities.filter((c) => !currentCapNames.has(c.name)).map((cap) => (
               <button
                 key={cap.name}
                 onClick={() => toggleCapability(cap.name)}

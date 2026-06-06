@@ -11,7 +11,7 @@
  */
 
 import type { AgentRole } from "@/types";
-import { matchCapabilitiesFromTask, PRESET_CAPABILITIES } from "@/lib/capability/CapabilityMatcher";
+import { matchCapabilitiesFromList } from "@/lib/capability/CapabilityMatcher";
 import type { AgentCapability } from "@/types";
 
 // ============================================================
@@ -78,11 +78,11 @@ const MODEL_KEYWORDS: Record<string, string> = {
 /**
  * 解析自然语言输入，识别意图并提取参数
  */
-export function parseNaturalLanguage(input: string): NLUParseResult {
+export async function parseNaturalLanguage(input: string): Promise<NLUParseResult> {
   const text = input.trim();
 
   // 1. 创建 Agent 意图
-  const createResult = parseCreateAgent(text);
+  const createResult = await parseCreateAgent(text);
   if (createResult) return createResult;
 
   // 2. 删除 Agent 意图 (SOLO-02)
@@ -133,7 +133,7 @@ export function parseNaturalLanguage(input: string): NLUParseResult {
 // ============================================================
 
 /** 解析"创建Agent"意图 */
-function parseCreateAgent(text: string): NLUParseResult | null {
+async function parseCreateAgent(text: string): Promise<NLUParseResult | null> {
   // 匹配模式：创建/新建/添加 + Agent/agent/员工/助手 + 名称 + 可选配置
   const createPatterns = [
     /(?:创建|新建|添加)(?:一名|一个|个)?Agent(?:名叫|名为|叫)(.+)/,
@@ -184,12 +184,26 @@ function parseCreateAgent(text: string): NLUParseResult | null {
       }
 
       // ORG-01/ACT-05: 从自然语言中提取能力标签
-      // 使用 CapabilityMatcher 的关键词匹配从名称和描述中提取能力
-      const capabilityNames = matchCapabilitiesFromTask(namePart);
+      // 通过 API 获取 skills 数据，使用 matchCapabilitiesFromList 匹配
+      let allCaps: AgentCapability[] = [];
+      try {
+        const res = await fetch("/api/skills");
+        const data = await res.json();
+        if (data.success && Array.isArray(data.skills)) {
+          allCaps = data.skills.map((s: any) => ({
+            name: s.name,
+            description: s.description || `Skill: ${s.name}`,
+            tools: s.tags || [],
+          }));
+        }
+      } catch {
+        // API 不可用时静默跳过
+      }
+
+      const capabilityNames = matchCapabilitiesFromList(namePart, allCaps);
       if (capabilityNames.length > 0) {
-        // 将匹配的能力标签名映射为完整的 AgentCapability 对象
         const capabilities: AgentCapability[] = capabilityNames
-          .map((name) => PRESET_CAPABILITIES.find((c) => c.name === name))
+          .map((name) => allCaps.find((c) => c.name === name))
           .filter((c): c is AgentCapability => c !== undefined);
         params.capabilities = capabilities;
       }
@@ -555,8 +569,8 @@ function parseAddCapability(text: string): NLUParseResult | null {
     if (match) {
       const agentName = match[1].trim();
       const capabilityStr = match[2].trim();
-      // 使用 CapabilityMatcher 从能力描述中提取匹配的标签
-      const matchedNames = matchCapabilitiesFromTask(capabilityStr);
+      // 直接使用能力描述作为标签名（精确匹配需通过 API，此处简化处理）
+      const matchedNames = [capabilityStr];
       return {
         intent: "add_capability",
         confidence: 0.8,
@@ -582,7 +596,7 @@ function parseRemoveCapability(text: string): NLUParseResult | null {
     if (match) {
       const agentName = match[1].trim();
       const capabilityStr = match[2].trim();
-      const matchedNames = matchCapabilitiesFromTask(capabilityStr);
+      const matchedNames = [capabilityStr];
       return {
         intent: "remove_capability",
         confidence: 0.8,

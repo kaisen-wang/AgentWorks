@@ -29,8 +29,9 @@ export interface ISkillRegistry {
    * @param definition Skill 定义
    * @param scope 资源范围（global 或 private）
    * @param agentId 私有范围时必须提供 Agent ID
+   * @param skillPath skill 目录的持久化路径
    */
-  register(definition: SkillDefinition, scope: ResourceScope, agentId?: AgentId): Promise<void>;
+  register(definition: SkillDefinition, scope: ResourceScope, agentId?: AgentId, skillPath?: string): Promise<void>;
 
   /**
    * 注销 Skill
@@ -334,6 +335,7 @@ export interface SkillRecord {
   config?: string;               // JSON 字符串
   executorType: 'function' | 'file';
   executorData?: string;         // 函数代码或文件路径
+  path?: string;                 // skill 目录路径，如 data/skills/my-skill
   status: 'active' | 'inactive' | 'error';
   healthStatus: string;          // JSON 字符串
   createdAt: number;

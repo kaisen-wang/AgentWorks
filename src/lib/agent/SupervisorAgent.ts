@@ -12,7 +12,8 @@ import { BaseAgent, ExecutionResult, SummaryResult, ReportContent, ArchiveInput 
 import type { AgentId, AgentConfig, AgentCapability } from "@/types";
 import { decomposeWithLLM, parseDecompositionResponse } from "@/lib/llm";
 import type { LLMConfig, DecompositionResult } from "@/lib/llm";
-import { matchCapabilitiesFromTask, matchAgentByCapability } from "@/lib/capability";
+import { matchCapabilitiesFromTask } from "@/lib/capability/CapabilityMatcherServer";
+import { matchAgentByCapability } from "@/lib/capability/CapabilityMatcher";
 import type { Agent } from "@/types";
 
 interface TaskDecomposition {

@@ -14,6 +14,7 @@ import { useAppStore } from "@/stores/appStore";
 import { SupervisorAgent, SpecialistAgent } from "@/lib/agent";
 import { sendSmsSummary } from "@/lib/notification/NotificationService";
 import type { LLMConfig } from "@/lib/llm";
+import { readFile } from "@/lib/storage/fileStorage";
 import type {
   AgentId, TaskId, ChatId, MessageId, Agent, Task, SubTask, Message,
   ReportCard, DecisionOption, TaskCard, BudgetAlert, HeartbeatAlert,
@@ -56,7 +57,7 @@ export class WorkflowEngine {
     if (agent.role === "supervisor") {
       instance = new SupervisorAgent(agent.id, agent.name, agent.config, agent.capabilities);
     } else {
-      instance = new SpecialistAgent(agent.id, agent.name, agent.config, agent.capabilities);
+      instance = new SpecialistAgent(agent.id, agent.name, agent.config, agent.capabilities, [], agent.skillIds || []);
     }
     this.agentInstances.set(agent.id, instance);
     return instance;
@@ -816,8 +817,47 @@ export class WorkflowEngine {
         agentConfigLlmEndpoint: agent.config.llmEndpoint,
       });
 
+      // 从聊天消息中提取最近的文件/图片附件，将内容注入到 prompt 中
+      let enrichedMessage = message;
+      const chatMessages = store.messages[chatId] || [];
+      // 查找最近的 file/image 类型消息（用户发送的）
+      const fileMessages = chatMessages.filter(
+        (m: Message) => m.senderId === "user" && (m.type === "file" || m.type === "image")
+      );
+      if (fileMessages.length > 0) {
+        const fileContextParts: string[] = [];
+        for (const fm of fileMessages) {
+          if (fm.type === "file" && fm.fileData) {
+            const { name, mimeType, url } = fm.fileData;
+            // 从 URL 中提取文件 ID（格式: /api/chat/files/{id}）
+            const fileId = url?.split("/").pop();
+            // 对于文本类文件，尝试读取内容
+            const textMimeTypes = ["text/plain", "text/csv", "text/markdown", "application/json"];
+            if (fileId && textMimeTypes.includes(mimeType)) {
+              const fileData = readFile(fileId);
+              if (fileData) {
+                const content = fileData.buffer.toString("utf-8");
+                // 限制文件内容长度，避免 prompt 过长
+                const maxLen = 8000;
+                const truncated = content.length > maxLen ? content.slice(0, maxLen) + "\n...（内容已截断）" : content;
+                fileContextParts.push(`[附件: ${name}]\n${truncated}`);
+                continue;
+              }
+            }
+            // 非文本文件或读取失败，仅附加元信息
+            fileContextParts.push(`[附件: ${name}（类型: ${mimeType}，链接: ${url || "无"}）]`);
+          } else if (fm.type === "image" && fm.imageData) {
+            const { url, alt } = fm.imageData;
+            fileContextParts.push(`[图片: ${alt || "图片"}（链接: ${url || "无"}）]`);
+          }
+        }
+        if (fileContextParts.length > 0) {
+          enrichedMessage = fileContextParts.join("\n\n") + "\n\n" + message;
+        }
+      }
+
       // 执行 Agent 的 execute 方法
-      const result = await agentInstance.execute(message, { chatId, llmConfig });
+      const result = await agentInstance.execute(enrichedMessage, { chatId, llmConfig });
 
       if (result.success) {
         // 打印 LLM 回复内容
