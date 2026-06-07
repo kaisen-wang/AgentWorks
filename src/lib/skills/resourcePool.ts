@@ -22,7 +22,7 @@ export class ResourcePool<T extends { id: string }> implements IResourcePool<T> 
   private maxCacheSize: number;
 
   constructor(
-    protected repo: { insert: (entity: T) => void; findById: (id: string) => T | undefined; findAll: () => T[]; delete: (id: string) => void },
+    protected repo: { insert: (entity: T) => void; update: (entity: T) => void; findById: (id: string) => T | undefined; findAll: () => T[]; delete: (id: string) => void },
     options?: { maxCacheSize?: number }
   ) {
     this.maxCacheSize = options?.maxCacheSize || 100;
@@ -30,10 +30,16 @@ export class ResourcePool<T extends { id: string }> implements IResourcePool<T> 
 
   /**
    * 注册资源
+   * 如果资源已存在则更新，否则插入
    */
   async register(resource: T): Promise<void> {
-    // 持久化到数据库
-    this.repo.insert(resource);
+    // 检查是否已存在，存在则更新，否则插入
+    const existing = this.repo.findById(resource.id);
+    if (existing) {
+      this.repo.update(resource);
+    } else {
+      this.repo.insert(resource);
+    }
 
     // 更新缓存
     this.updateCache(resource.id, resource);
@@ -113,7 +119,7 @@ export class ResourcePool<T extends { id: string }> implements IResourcePool<T> 
  */
 export class GlobalResourcePool<T extends { id: string }> extends ResourcePool<T> implements IGlobalPool<T> {
   constructor(
-    repo: { insert: (entity: T) => void; findById: (id: string) => T | undefined; findAll: () => T[]; delete: (id: string) => void },
+    repo: { insert: (entity: T) => void; update: (entity: T) => void; findById: (id: string) => T | undefined; findAll: () => T[]; delete: (id: string) => void },
     options?: { maxCacheSize?: number }
   ) {
     super(repo, options);
@@ -141,6 +147,7 @@ export class PrivateResourcePool<T extends { id: string; ownerId?: string }> ext
   constructor(
     repo: {
       insert: (entity: T) => void;
+      update: (entity: T) => void;
       findById: (id: string) => T | undefined;
       findAll: () => T[];
       delete: (id: string) => void;
@@ -184,12 +191,14 @@ export class ResourceManager<T extends { id: string; ownerId?: string }> impleme
   constructor(
     globalRepo: {
       insert: (entity: T) => void;
+      update: (entity: T) => void;
       findById: (id: string) => T | undefined;
       findAll: () => T[];
       delete: (id: string) => void;
     },
     privateRepo: {
       insert: (entity: T) => void;
+      update: (entity: T) => void;
       findById: (id: string) => T | undefined;
       findAll: () => T[];
       delete: (id: string) => void;

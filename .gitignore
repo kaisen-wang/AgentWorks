@@ -5,6 +5,7 @@ node_modules/
 .vscode/
 .agents/
 data/
+output/
 
 .env.local
 tsconfig.tsbuildinfo

@@ -41,47 +41,72 @@ export interface SkillsToolsManager {
 }
 
 /**
- * 初始化 Skills 和 Tools 管理器
+ * SkillsToolsManager 单例
+ */
+let managerInstance: SkillsToolsManager | null = null;
+let managerInitPromise: Promise<SkillsToolsManager> | null = null;
+
+/**
+ * 获取或创建 Skills 和 Tools 管理器（单例）
+ * 确保全局工具只初始化一次
  */
 export async function createSkillsToolsManager(): Promise<SkillsToolsManager> {
-  const db = getDb();
+  // 已初始化，直接返回
+  if (managerInstance) {
+    return managerInstance;
+  }
 
-  // 创建数据访问层
-  const skillRepo = new SkillRepo(db);
-  const toolRepo = new ToolRepo(db);
-  const executionLogRepo = new ExecutionLogRepo(db);
+  // 正在初始化中，等待完成（防止并发请求重复初始化）
+  if (managerInitPromise) {
+    return managerInitPromise;
+  }
 
-  // 创建注册表
-  const toolRegistry = new ToolRegistry(toolRepo, executionLogRepo);
-  const skillRegistry = new SkillRegistry(skillRepo, toolRegistry, executionLogRepo);
+  // 开始初始化
+  managerInitPromise = (async () => {
+    const db = getDb();
 
-  // 初始化全局工具（Read、Write、Edit、Bash）
-  const { initializeGlobalTools } = await import('@/lib/tools/init');
-  await initializeGlobalTools(toolRegistry);
+    // 创建数据访问层
+    const skillRepo = new SkillRepo(db);
+    const toolRepo = new ToolRepo(db);
+    const executionLogRepo = new ExecutionLogRepo(db);
 
-  // 创建执行器
-  const toolExecutor = new ToolExecutor(toolRegistry);
-  const skillExecutor = new SkillExecutor(skillRegistry, toolExecutor);
+    // 创建注册表
+    const toolRegistry = new ToolRegistry(toolRepo, executionLogRepo);
+    const skillRegistry = new SkillRegistry(skillRepo, toolRegistry, executionLogRepo);
 
-  // 创建调度器
-  const executionScheduler = new ExecutionScheduler(
-    skillExecutor,
-    toolExecutor,
-    {
-      maxConcurrency: 10,
-      maxAgentConcurrency: 3,
-    }
-  );
+    // 初始化全局工具（Read、Write、Edit、Bash）
+    const { initializeGlobalTools } = await import('@/lib/tools/init');
+    await initializeGlobalTools(toolRegistry);
 
-  // 创建 MCP 适配器
-  const mcpAdapter = new MCPAdapter();
+    // 创建执行器
+    const toolExecutor = new ToolExecutor(toolRegistry);
+    const skillExecutor = new SkillExecutor(skillRegistry, toolExecutor);
 
-  return {
-    skillRegistry,
-    toolRegistry,
-    skillExecutor,
-    toolExecutor,
-    executionScheduler,
-    mcpAdapter,
-  };
+    // 创建调度器
+    const executionScheduler = new ExecutionScheduler(
+      skillExecutor,
+      toolExecutor,
+      {
+        maxConcurrency: 10,
+        maxAgentConcurrency: 3,
+      }
+    );
+
+    // 创建 MCP 适配器
+    const mcpAdapter = new MCPAdapter();
+
+    managerInstance = {
+      skillRegistry,
+      toolRegistry,
+      skillExecutor,
+      toolExecutor,
+      executionScheduler,
+      mcpAdapter,
+    };
+
+    managerInitPromise = null;
+    return managerInstance;
+  })();
+
+  return managerInitPromise;
 }
