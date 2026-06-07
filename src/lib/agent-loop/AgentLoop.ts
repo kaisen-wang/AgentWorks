@@ -545,13 +545,74 @@ export class AgentLoop {
     // 转为 LLM 兼容格式
     const chatMessages: ChatMessage[] = messages.map(convertToChatMessage);
 
+    // 校验并修复 transcript 中 tool_calls/tool 消息配对不完整的问题
+    // 这可能由异常中断、持久化失败等导致，需要处理两种情况：
+    // 1. assistant(tool_calls) 后缺少对应 tool 消息 → 补充错误 tool 消息
+    // 2. 孤立的 tool 消息（前面没有对应的 assistant(tool_calls)）→ 移除
+    const fixedMessages: ChatMessage[] = [];
+    // 记录每个 assistant(tool_calls) 消息中所有 tool_call_id
+    const assistantToolCallIds = new Map<number, string[]>(); // index → tool_call_ids
+    for (let i = 0; i < chatMessages.length; i++) {
+      const msg = chatMessages[i];
+      if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+        assistantToolCallIds.set(i, msg.tool_calls.map(tc => tc.id));
+      }
+    }
+    // 记录每个 tool 消息的 tool_call_id 是否有对应的 assistant(tool_calls)
+    const toolIdsWithAssistant = new Set<string>();
+    for (const [_, ids] of assistantToolCallIds) {
+      for (const id of ids) {
+        toolIdsWithAssistant.add(id);
+      }
+    }
+
+    for (let i = 0; i < chatMessages.length; i++) {
+      const msg = chatMessages[i];
+
+      // 跳过孤立的 tool 消息（没有对应的 assistant(tool_calls)）
+      if (msg.role === "tool") {
+        if (!msg.tool_call_id || !toolIdsWithAssistant.has(msg.tool_call_id)) {
+          continue; // 移除孤立的 tool 消息
+        }
+        fixedMessages.push(msg);
+        continue;
+      }
+
+      fixedMessages.push(msg);
+
+      // assistant(tool_calls) 后补充缺少的 tool 消息
+      if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+        const expectedIds = assistantToolCallIds.get(i) || [];
+        // 收集后续已有的 tool 消息的 tool_call_id
+        const existingToolIds = new Set<string>();
+        for (let j = i + 1; j < chatMessages.length; j++) {
+          if (chatMessages[j].role === "tool" && chatMessages[j].tool_call_id) {
+            existingToolIds.add(chatMessages[j].tool_call_id!);
+          } else if (chatMessages[j].role !== "tool") {
+            break;
+          }
+        }
+        // 为缺少的 tool_call_id 补充错误 tool 消息
+        for (const tc of msg.tool_calls) {
+          if (!existingToolIds.has(tc.id)) {
+            fixedMessages.push({
+              role: "tool",
+              content: `工具调用 ${tc.function.name} 执行结果丢失（可能因异常中断）`,
+              tool_call_id: tc.id,
+              name: tc.function.name,
+            });
+          }
+        }
+      }
+    }
+
     // 流式调用
     let content = "";
     let thinking = "";
     const toolCallMap = new Map<string, { id: string; name: string; args: string[] }>();
 
     const streamResult = await this.streamingEngine.streamResponse(
-      chatMessages,
+      fixedMessages,
       this.config.llmConfig,
       this.config.tools ?? [],
       signal,

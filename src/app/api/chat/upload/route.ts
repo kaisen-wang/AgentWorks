@@ -16,7 +16,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
   "application/pdf",
-  "text/plain", "text/csv", "application/json",
+  "text/plain", "text/csv", "text/markdown", "application/json",
   "application/zip",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

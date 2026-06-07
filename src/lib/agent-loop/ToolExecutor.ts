@@ -247,14 +247,16 @@ export class DefaultToolExecutor implements IToolExecutor {
     );
 
     const results: LoopToolExecutionResult[] = [];
-    for (const outcome of settled) {
+    for (let i = 0; i < settled.length; i++) {
+      const outcome = settled[i];
       if (outcome.status === "fulfilled") {
         results.push(outcome.value);
       } else {
         // 不应到达此处（executeToolCall 内部已 catch），但做防御性处理
+        // 保留原始 toolCallId，避免 LLM API 报错 insufficient tool messages
         results.push({
-          toolCallId: "",
-          toolName: "",
+          toolCallId: toolCalls[i].id,
+          toolName: toolCalls[i].function.name,
           output: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
           isError: true,
           terminate: false,
